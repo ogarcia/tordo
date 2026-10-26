@@ -33,8 +33,9 @@ ARG RUST_VERSION=1
 
 FROM docker.io/rust:${RUST_VERSION}-alpine${ALPINE_VERSION} AS builder
 
-# musl-dev: C headers for ring (pulled in by rustls via minreq's https feature).
-RUN apk add --no-cache musl-dev
+# musl-dev + gcc: C toolchain to compile bundled SQLite (rusqlite) and ring
+# (pulled in by rustls via minreq's https feature).
+RUN apk add --no-cache musl-dev gcc
 WORKDIR /app
 COPY . .
 RUN cargo build --release --locked && \

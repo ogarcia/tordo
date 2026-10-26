@@ -12,9 +12,43 @@ use std::path::Path;
 use std::sync::LazyLock;
 
 use anyhow::{Context as _, Result};
+use clap::{Parser, Subcommand};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use tera::{Context, Tera};
+
+mod import;
+
+/// Tordo — build your catalog site, or import entries from a Rucio database.
+#[derive(Parser)]
+#[command(version, about)]
+struct Cli {
+    #[command(subcommand)]
+    command: Option<Command>,
+}
+
+#[derive(Subcommand)]
+enum Command {
+    /// Build the catalog site into dist/ (the default when no command is given).
+    Generate {
+        /// Re-fetch every TMDB payload, ignoring the cache TTL.
+        #[arg(long)]
+        refresh_all: bool,
+        /// Re-fetch only ongoing series.
+        #[arg(long)]
+        refresh_live: bool,
+    },
+    /// Import catalog entries from a Rucio database.
+    Import(import::ImportArgs),
+}
+
+fn main() -> Result<()> {
+    match Cli::parse().command {
+        None => generate(false, false),
+        Some(Command::Generate { refresh_all, refresh_live }) => generate(refresh_all, refresh_live),
+        Some(Command::Import(args)) => import::run(args),
+    }
+}
 
 const TMDB_IMG_BASE: &str = "https://image.tmdb.org/t/p/w500";
 const CONTENT_DIR: &str = "content";
@@ -876,7 +910,7 @@ fn copy_dir(src: &Path, dst: &Path) -> Result<()> {
 // Main
 // ---------------------------------------------------------------------------
 
-fn main() -> Result<()> {
+fn generate(refresh_all: bool, refresh_live: bool) -> Result<()> {
     // The catalog — its config.toml, content/ and cache/ — can live in a
     // separate directory (e.g. a private content repo); select it with
     // CATALOG_DIR (default: here). A missing config.toml falls back to the
@@ -902,10 +936,9 @@ fn main() -> Result<()> {
 
     // Cache policy: `--refresh-all` re-fetches everything, `--refresh-live`
     // re-fetches only ongoing series; otherwise ongoing series honor the TTL.
-    let args: Vec<String> = std::env::args().collect();
-    let mode = if args.iter().any(|a| a == "--refresh-all") {
+    let mode = if refresh_all {
         RefreshMode::All
-    } else if args.iter().any(|a| a == "--refresh-live") {
+    } else if refresh_live {
         RefreshMode::Live
     } else {
         RefreshMode::Auto

@@ -20,8 +20,8 @@ la vuelve a sacar como actualizada. Mira [`examples/`](examples/) para una
 entrada documentada al completo; cuando `content/` no tiene ninguna entrada se
 renderizan esos ejemplos, de modo que un clon recién hecho ya muestra una demo.
 `content/` se recorre de forma **recursiva**, así que su organización es libre —
-la herramienta de importación coloca las entradas en `content/tv/` y
-`content/movies/`, pero vale plano o cualquier otra disposición.
+`tordo import` coloca las entradas en `content/tv/` y `content/movies/`, pero
+vale plano o cualquier otra disposición.
 
 Al construir, el generador obtiene los datos de TMDB (cacheados en `cache/`) y
 renderiza la portada más una página de detalle por entrada en `dist/`. El
@@ -84,8 +84,8 @@ Un refresco fallido (sin red/credencial) recurre a la copia cacheada en vez de
 romper el build. Dos flags fuerzan un refresco:
 
 ```sh
-cargo run -- --refresh-live   # re-obtener solo series en emisión
-cargo run -- --refresh-all    # re-obtener todo
+cargo run -- generate --refresh-live   # re-obtener solo series en emisión
+cargo run -- generate --refresh-all    # re-obtener todo
 ```
 
 ## Configuración

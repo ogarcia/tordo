@@ -17,8 +17,8 @@ badges, and its own `date`). The entry's position on the home page is the most
 recent of its releases' dates, so adding links resurfaces it as updated. See
 [`examples/`](examples/) for a fully documented entry; when `content/` has no
 entry those examples are rendered instead, so a fresh checkout still shows a
-demo. `content/` is scanned **recursively**, so its layout is free — the import
-tool files entries under `content/tv/` and `content/movies/`, but flat or any
+demo. `content/` is scanned **recursively**, so its layout is free — `tordo
+import` files entries under `content/tv/` and `content/movies/`, but flat or any
 other arrangement works.
 
 At build time the generator fetches TMDB data (cached under `cache/`) and renders
@@ -78,8 +78,8 @@ A refresh that fails (no network/credential) falls back to the cached copy
 instead of breaking the build. Two flags force a refresh:
 
 ```sh
-cargo run -- --refresh-live   # re-fetch ongoing series only
-cargo run -- --refresh-all    # re-fetch everything
+cargo run -- generate --refresh-live   # re-fetch ongoing series only
+cargo run -- generate --refresh-all    # re-fetch everything
 ```
 
 ## Configuration
