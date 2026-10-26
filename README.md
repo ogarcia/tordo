@@ -1,6 +1,6 @@
-**English** · [Español](README.es.md)
-
-# Tordo
+<h1 align="center">Tordo</h1>
+<p align="center"><img src="static/favicon.svg" width="96" alt="Tordo"></p>
+<p align="center"><strong>English</strong> · <a href="README.es.md">Español</a></p>
 
 Build your own browsable catalog of films and series linked with
 [Rucio](https://github.com/ogarcia/rucio). It is a small static-site generator:
