@@ -1010,19 +1010,43 @@ fn main() -> Result<()> {
     // Default ordering: newest alta first. The browser can re-sort live.
     fichas.sort_by(|a, b| b.1.date.cmp(&a.1.date));
 
-    let out = Path::new(OUT_DIR);
-    // Rebuild dist/ from scratch so renamed or removed fichas leave no stale pages.
+    // Output goes to dist/ by default; CATALOG_OUT redirects it (the container
+    // points it at the mounted catalog so the built site lands beside it).
+    let out_dir = std::env::var("CATALOG_OUT").unwrap_or_else(|_| OUT_DIR.to_string());
+    let out = Path::new(&out_dir);
+    // Rebuild the output from scratch so renamed or removed fichas leave no stale pages.
     if out.exists() {
-        fs::remove_dir_all(out).with_context(|| format!("clearing {OUT_DIR}/"))?;
+        fs::remove_dir_all(out).with_context(|| format!("clearing {out_dir}/"))?;
     }
     fs::create_dir_all(out)?;
 
     let base = cfg.base_url.trim_end_matches('/').to_string();
+
+    // Catalog figures for the About modal (built once, rendered on every page).
+    let movies = fichas.iter().filter(|(f, _)| f.media_type == "movie").count();
+    let series = fichas.iter().filter(|(f, _)| f.media_type == "tv").count();
+    let seasons: usize = fichas.iter().map(|(_, c)| c.season_count).sum();
+    let releases: usize = fichas.iter().map(|(f, _)| f.releases.len()).sum();
+    let links: usize = fichas
+        .iter()
+        .flat_map(|(f, _)| f.releases.iter())
+        .map(|r| r.links.len())
+        .sum();
+    let stats = serde_json::json!({
+        "total": fichas.len(),
+        "movies": movies,
+        "series": series,
+        "seasons": seasons,
+        "releases": releases,
+        "links": links,
+    });
+
     let site = serde_json::json!({
         "title": cfg.title,
         "lang": cfg.lang,
         "base_url": base,
         "telegram": cfg.contact_telegram,
+        "stats": stats,
     });
 
     // Absolute image for the home-page preview (detail pages use the poster).
@@ -1111,7 +1135,7 @@ fn main() -> Result<()> {
     if source == EXAMPLES_DIR {
         eprintln!("note: no entries under {}/ — rendered {EXAMPLES_DIR}/ as a demo", content_dir.display());
     }
-    println!("Generated {} fichas into {OUT_DIR}/", fichas.len());
+    println!("Generated {} fichas into {out_dir}/", fichas.len());
     Ok(())
 }
 

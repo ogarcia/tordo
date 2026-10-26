@@ -1,0 +1,21 @@
+# Build artifacts and the generated site — not needed in the image context.
+target/
+dist/
+
+# A local catalog never belongs in the image (it bundles only the generator and
+# its assets); catalogs are mounted at run time.
+config.toml
+content/
+cache/
+
+# Git and CI metadata.
+.git/
+.github/
+
+# Pre-built binaries (artifacts/<arch>/tordo) are injected by CI with
+# --build-arg BUILDER=prebuilt, so artifacts/ is intentionally NOT excluded.
+
+# Editor and OS noise.
+*.swp
+*~
+.DS_Store

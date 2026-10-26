@@ -64,6 +64,71 @@ main { max-width: 1100px; margin: 0 auto; padding: 20px; }
   font-size: 13px;
 }
 .footer-inner p { margin: 0; }
+/* Both footer actions (Telegram link + About button) share one look. */
+.footer-link {
+  font: inherit;
+  color: var(--accent);
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  text-decoration: none;
+}
+.footer-link:hover { text-decoration: underline; }
+
+/* --- About modal --- */
+.modal {
+  margin: auto;
+  padding: 0;
+  width: calc(100% - 32px);
+  max-width: 460px;
+  background: var(--panel);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+.modal::backdrop { background: rgba(0, 0, 0, 0.5); }
+.modal-box { position: relative; padding: 24px; }
+.modal-box h2 { margin: 0 0 16px; font-size: 20px; }
+.modal-close {
+  position: absolute;
+  top: 8px;
+  right: 12px;
+  font-size: 26px;
+  line-height: 1;
+  color: var(--muted);
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+.modal-close:hover { color: var(--text); }
+
+.stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
+  gap: 10px;
+}
+.stat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 12px 8px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.stat-num {
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+}
+.stat-label { font-size: 12px; color: var(--muted); text-align: center; }
+
+.modal-contribute { margin: 18px 0 0; font-size: 13px; color: var(--muted); line-height: 1.5; }
+.tmdb-note { margin: 12px 0 0; font-size: 12px; color: var(--muted); line-height: 1.5; }
 
 /* --- Home --- */
 .controls {
@@ -89,6 +154,13 @@ main { max-width: 1100px; margin: 0 auto; padding: 20px; }
   gap: 6px;
   color: var(--muted);
   font-size: 14px;
+}
+/* The sort caption + its two selects wrap as ONE unit, so the order select
+   never gets orphaned on its own line when only part of it fits. */
+.sort-group {
+  display: flex;
+  align-items: center;
+  gap: 12px;
 }
 
 .cards {
@@ -278,4 +350,26 @@ main { max-width: 1100px; margin: 0 auto; padding: 20px; }
 
 @media (max-width: 520px) {
   .detail-head .poster { flex-basis: 140px; }
+
+  /* Toolbar on phones: a 2-column grid — search + type on top, then the two
+     sort selects sharing one row — instead of letting them wrap to a third
+     line. The "Ordenar por:" caption is dropped to make room, and the sort
+     column is a touch wider since "Última actualización" is the longest option. */
+  .controls {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    align-items: center;
+  }
+  .controls input[type="search"] { min-width: 0; width: 100%; }
+  .controls #type { width: 100%; }
+  .sort-group {
+    grid-column: 1 / -1;
+    display: grid;
+    grid-template-columns: 1.3fr 1fr;
+    gap: 10px;
+  }
+  .controls .ctl-label { display: none; }
+  .sort-group label { min-width: 0; }
+  .sort-group select { width: 100%; }
 }

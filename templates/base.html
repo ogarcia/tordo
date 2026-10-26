@@ -27,10 +27,31 @@
   </main>
   <footer class="site-footer">
     <div class="footer-inner">
-      {% if site.telegram %}<p class="contribute">{{ t.contribute }} <a href="{{ site.telegram }}" target="_blank" rel="noopener">Telegram</a>.</p>{% else %}<span></span>{% endif %}
-      <p>{{ t.tmdb_attribution }}</p>
+      {% if site.telegram %}<a class="footer-link" href="{{ site.telegram }}" target="_blank" rel="noopener" title="{{ t.contribute }}">Telegram</a>{% else %}<span></span>{% endif %}
+      <button class="footer-link" type="button" data-about-open>{{ t.about }}</button>
     </div>
   </footer>
+
+  <dialog id="about-modal" class="modal">
+    <div class="modal-box">
+      <button class="modal-close" type="button" data-about-close aria-label="{{ t.close }}">&times;</button>
+      <h2>{{ t.about }}</h2>
+      <div class="stats">
+        <div class="stat"><span class="stat-num">{{ site.stats.total }}</span><span class="stat-label">{{ t.stat_items }}</span></div>
+        <div class="stat"><span class="stat-num">{{ site.stats.movies }}</span><span class="stat-label">{{ t.filter_movies }}</span></div>
+        <div class="stat"><span class="stat-num">{{ site.stats.series }}</span><span class="stat-label">{{ t.filter_series }}</span></div>
+        <div class="stat"><span class="stat-num">{{ site.stats.seasons }}</span><span class="stat-label">{{ t.stat_seasons }}</span></div>
+        <div class="stat"><span class="stat-num">{{ site.stats.releases }}</span><span class="stat-label">{{ t.stat_releases }}</span></div>
+        <div class="stat"><span class="stat-num">{{ site.stats.links }}</span><span class="stat-label">{{ t.stat_links }}</span></div>
+      </div>
+      {% if site.telegram %}<p class="modal-contribute">{{ t.contribute }} <a href="{{ site.telegram }}" target="_blank" rel="noopener">Telegram</a>.</p>{% endif %}
+      <p class="tmdb-note">
+        <a href="https://www.themoviedb.org/" target="_blank" rel="noopener">The Movie Database (TMDB)</a><br>
+        {{ t.tmdb_attribution }}
+      </p>
+    </div>
+  </dialog>
+
   <script src="static/app.js"></script>
 </body>
 </html>

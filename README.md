@@ -50,6 +50,20 @@ With no `CATALOG_DIR` the build reads this directory (and falls back to
 `config.toml`, `content/` and `cache/` describe exactly what is in your catalog —
 take care not to share their contents.
 
+## Container
+
+A prebuilt image bundles the generator and its assets, so you can build a catalog
+without a Rust toolchain. Mount the catalog at `/catalog`:
+
+```sh
+docker run --rm -v "$PWD:/catalog" ghcr.io/ogarcia/tordo
+# the built site is written to ./dist
+```
+
+It reads `/catalog/config.toml`, `/catalog/content/` and `/catalog/cache/` and
+writes `/catalog/dist/`. Add `-e TMDB_READ_TOKEN=...` when some entries are not
+yet cached.
+
 ## TMDB caching
 
 To stay a good API citizen, payloads are cached under `cache/` and reused:

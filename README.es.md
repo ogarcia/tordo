@@ -54,6 +54,20 @@ cuando no hay `config.toml`, renderizando la demo). Tu `config.toml`, `content/`
 y `cache/` describen exactamente qué hay en tu catálogo — ten cuidado de no
 compartir su contenido.
 
+## Contenedor
+
+Una imagen ya construida empaqueta el generador y sus recursos, así que puedes
+construir un catálogo sin tener Rust instalado. Monta el catálogo en `/catalog`:
+
+```sh
+docker run --rm -v "$PWD:/catalog" ghcr.io/ogarcia/tordo
+# el sitio construido se escribe en ./dist
+```
+
+Lee `/catalog/config.toml`, `/catalog/content/` y `/catalog/cache/` y escribe
+`/catalog/dist/`. Añade `-e TMDB_READ_TOKEN=...` cuando alguna entrada aún no
+esté cacheada.
+
 ## Caché de TMDB
 
 Para ser buen ciudadano con la API, los payloads se cachean en `cache/` y se

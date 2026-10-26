@@ -114,4 +114,19 @@
       });
     });
   });
+
+  // --- About modal: stats + TMDB attribution, from any page's footer ---
+  const aboutModal = document.getElementById("about-modal");
+  if (aboutModal && typeof aboutModal.showModal === "function") {
+    document.querySelectorAll("[data-about-open]").forEach((btn) =>
+      btn.addEventListener("click", () => aboutModal.showModal())
+    );
+    aboutModal.querySelectorAll("[data-about-close]").forEach((btn) =>
+      btn.addEventListener("click", () => aboutModal.close())
+    );
+    // A click on the backdrop (the dialog itself, outside the box) closes it.
+    aboutModal.addEventListener("click", (e) => {
+      if (e.target === aboutModal) aboutModal.close();
+    });
+  }
 })();

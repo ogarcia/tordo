@@ -7,17 +7,19 @@
     <option value="movie">{{ t.filter_movies }}</option>
     <option value="tv">{{ t.filter_series }}</option>
   </select>
-  <label>{{ t.sort_label }}
-    <select id="sort">
-      <option value="date">{{ t.sort_date }}</option>
-      <option value="title">{{ t.sort_title }}</option>
-      <option value="year">{{ t.sort_year }}</option>
+  <div class="sort-group">
+    <label><span class="ctl-label">{{ t.sort_label }}</span>
+      <select id="sort" aria-label="{{ t.sort_label }}">
+        <option value="date">{{ t.sort_date }}</option>
+        <option value="title">{{ t.sort_title }}</option>
+        <option value="year">{{ t.sort_year }}</option>
+      </select>
+    </label>
+    <select id="order" aria-label="{{ t.sort_label }}">
+      <option value="desc">{{ t.order_desc }}</option>
+      <option value="asc">{{ t.order_asc }}</option>
     </select>
-  </label>
-  <select id="order" aria-label="{{ t.sort_label }}">
-    <option value="desc">{{ t.order_desc }}</option>
-    <option value="asc">{{ t.order_asc }}</option>
-  </select>
+  </div>
 </div>
 
 <p id="no-results" class="no-results" hidden>{{ t.no_results }}</p>
