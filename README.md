@@ -28,13 +28,18 @@ client-side, so nothing needs a server.
 
 ## Build
 
+`tordo` has two commands: `generate` (build the site, the default when none is
+given) and `import` (see below). `cargo run` is `cargo run -- generate`:
+
 ```sh
 export TMDB_READ_TOKEN=...   # TMDB v4 read access token (or TMDB_API_KEY)
-cargo run
-# output in dist/
+cargo run                    # == tordo generate; output in dist/
 ```
 
-Entries whose TMDB payload is already cached build without a key or network.
+Entries whose TMDB payload is already cached build without a key or network. The
+token is free: create a TMDB account and copy your API **Read Access Token** (v4)
+from [Settings → API](https://www.themoviedb.org/settings/api) — or use the v3
+**API Key** as `TMDB_API_KEY`.
 
 Copy `config.example.toml` to `config.toml` first (see Configuration). Your
 catalog — its `config.toml`, `content/` and `cache/` — can live in its own
@@ -50,19 +55,35 @@ With no `CATALOG_DIR` the build reads this directory (and falls back to
 `config.toml`, `content/` and `cache/` describe exactly what is in your catalog —
 take care not to share their contents.
 
+## Importing from a Rucio database
+
+`tordo import` reads the `shared_files` table of a Rucio database, groups the
+shared video files into works, resolves each against TMDB and writes the matching
+`content/<type>-<id>.toml` entries — deduplicating against what is already there:
+
+```sh
+export TMDB_READ_TOKEN=...
+cargo run -- import          # asks for the database and content directory
+```
+
+With no `--db`, the Rucio daemon's own database is used. Useful flags:
+`--content DIR`, `--plan` (offline preview), `--dry-run` (query TMDB, write
+nothing), `--auto` (skip uncertain matches), `--limit N`; `tordo import --help`
+lists them all.
+
 ## Container
 
-A prebuilt image bundles the generator and its assets, so you can build a catalog
+A prebuilt image bundles `tordo` and its assets, so you can run either command
 without a Rust toolchain. Mount the catalog at `/catalog`:
 
 ```sh
-docker run --rm -v "$PWD:/catalog" ghcr.io/ogarcia/tordo
-# the built site is written to ./dist
+docker run --rm -v "$PWD:/catalog" ghcr.io/ogarcia/tordo          # generate
+docker run --rm -v "$PWD:/catalog" ghcr.io/ogarcia/tordo import   # import
 ```
 
-It reads `/catalog/config.toml`, `/catalog/content/` and `/catalog/cache/` and
-writes `/catalog/dist/`. Add `-e TMDB_READ_TOKEN=...` when some entries are not
-yet cached.
+`generate` reads `/catalog/config.toml`, `/catalog/content/` and `/catalog/cache/`
+and writes `/catalog/dist/`. Add `-e TMDB_READ_TOKEN=...` when some entries are
+not yet cached.
 
 ## TMDB caching
 
@@ -87,3 +108,20 @@ cargo run -- generate --refresh-all    # re-fetch everything
 Copy `config.example.toml` to `config.toml` and set the catalog `title` and the
 UI/content `lang` (UI strings live in `i18n/<lang>.toml`). The API key is never
 stored in config. Everything else in the file is optional.
+
+## Environment variables
+
+| Variable | Command | Purpose |
+|---|---|---|
+| `TMDB_READ_TOKEN` | generate, import | TMDB v4 read token (preferred) |
+| `TMDB_API_KEY` | generate, import | TMDB v3 API key (alternative) |
+| `CATALOG_DIR` | generate | directory holding `config.toml`, `content/`, `cache/` (default: current dir) |
+| `CATALOG_OUT` | generate | output directory for the built site (default: `dist`) |
+| `RUCIOD_DB_PATH` | import | explicit path to the Rucio database |
+| `RUCIOD_BASE_DIR` | import | base dir holding `rucio.db` (if `RUCIOD_DB_PATH` is unset) |
+| `NO_COLOR` / `FORCE_COLOR` | import | disable / force coloured terminal output |
+
+The TMDB credential can also be passed with `--tmdb-token`/`--tmdb-key`, and the
+database with `--db`. When no database path is given (neither `--db` nor these
+variables), `import` looks for the Rucio daemon's default database. In the
+container these are set with `-e NAME=value`.

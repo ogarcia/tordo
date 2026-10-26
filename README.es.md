@@ -31,14 +31,19 @@ servidor.
 
 ## Construir
 
+`tordo` tiene dos comandos: `generate` (construir el sitio, el que se usa por
+defecto si no indicas ninguno) e `import` (ver más abajo). `cargo run` equivale a
+`cargo run -- generate`:
+
 ```sh
 export TMDB_READ_TOKEN=...   # token de lectura v4 de TMDB (o TMDB_API_KEY)
-cargo run
-# salida en dist/
+cargo run                    # == tordo generate; salida en dist/
 ```
 
 Las entradas cuyo payload de TMDB ya está cacheado se construyen sin clave ni
-red.
+red. El token es gratis: crea una cuenta en TMDB y copia tu **Read Access Token**
+(v4) de la API en [Ajustes → API](https://www.themoviedb.org/settings/api) — o usa
+la **API Key** v3 como `TMDB_API_KEY`.
 
 Copia antes `config.example.toml` a `config.toml` (ver Configuración). Tu
 catálogo — su `config.toml`, `content/` y `cache/` — puede vivir en su propio
@@ -54,19 +59,37 @@ cuando no hay `config.toml`, renderizando la demo). Tu `config.toml`, `content/`
 y `cache/` describen exactamente qué hay en tu catálogo — ten cuidado de no
 compartir su contenido.
 
-## Contenedor
+## Importar desde una base de datos Rucio
 
-Una imagen ya construida empaqueta el generador y sus recursos, así que puedes
-construir un catálogo sin tener Rust instalado. Monta el catálogo en `/catalog`:
+`tordo import` lee la tabla `shared_files` de una base de datos Rucio, agrupa los
+ficheros de vídeo compartidos en obras, resuelve cada una contra TMDB y escribe
+las entradas `content/<tipo>-<id>.toml` correspondientes — deduplicando contra lo
+que ya existe:
 
 ```sh
-docker run --rm -v "$PWD:/catalog" ghcr.io/ogarcia/tordo
-# el sitio construido se escribe en ./dist
+export TMDB_READ_TOKEN=...
+cargo run -- import          # pregunta por la base de datos y el directorio de contenido
 ```
 
-Lee `/catalog/config.toml`, `/catalog/content/` y `/catalog/cache/` y escribe
-`/catalog/dist/`. Añade `-e TMDB_READ_TOKEN=...` cuando alguna entrada aún no
-esté cacheada.
+Sin `--db`, se usa la propia base de datos del daemon de Rucio. Flags útiles:
+`--content DIR`, `--plan` (vista previa sin red), `--dry-run` (consulta TMDB, no
+escribe), `--auto` (salta las coincidencias dudosas), `--limit N`; `tordo import
+--help` los lista todos.
+
+## Contenedor
+
+Una imagen ya construida empaqueta `tordo` y sus recursos, así que puedes ejecutar
+cualquiera de los dos comandos sin tener Rust instalado. Monta el catálogo en
+`/catalog`:
+
+```sh
+docker run --rm -v "$PWD:/catalog" ghcr.io/ogarcia/tordo          # generate
+docker run --rm -v "$PWD:/catalog" ghcr.io/ogarcia/tordo import   # import
+```
+
+`generate` lee `/catalog/config.toml`, `/catalog/content/` y `/catalog/cache/` y
+escribe `/catalog/dist/`. Añade `-e TMDB_READ_TOKEN=...` cuando alguna entrada
+aún no esté cacheada.
 
 ## Caché de TMDB
 
@@ -94,3 +117,20 @@ Copia `config.example.toml` a `config.toml` y pon el `title` del catálogo y el
 `lang` de interfaz/contenido (los textos de interfaz están en
 `i18n/<lang>.toml`). La clave de API nunca se guarda en el config. Todo lo demás
 del fichero es opcional.
+
+## Variables de entorno
+
+| Variable | Comando | Para qué |
+|---|---|---|
+| `TMDB_READ_TOKEN` | generate, import | token de lectura v4 de TMDB (preferido) |
+| `TMDB_API_KEY` | generate, import | clave de API v3 de TMDB (alternativa) |
+| `CATALOG_DIR` | generate | directorio con `config.toml`, `content/`, `cache/` (por defecto: directorio actual) |
+| `CATALOG_OUT` | generate | directorio de salida del sitio construido (por defecto: `dist`) |
+| `RUCIOD_DB_PATH` | import | ruta explícita a la base de datos Rucio |
+| `RUCIOD_BASE_DIR` | import | directorio base con `rucio.db` (si `RUCIOD_DB_PATH` no está) |
+| `NO_COLOR` / `FORCE_COLOR` | import | desactivar / forzar el color en terminal |
+
+La credencial de TMDB también se puede pasar con `--tmdb-token`/`--tmdb-key`, y la
+base de datos con `--db`. Cuando no se indica ninguna ruta de base de datos (ni
+`--db` ni estas variables), `import` busca la base de datos por defecto del daemon
+de Rucio. En el contenedor se indican con `-e NOMBRE=valor`.
