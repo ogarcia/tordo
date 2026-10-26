@@ -1422,18 +1422,21 @@ fn write_entry(work: &Work, tmdb_id: i64, content_dir: &Path, mode: DateMode, ex
     Ok(())
 }
 
-fn merge_entry(work: &Work, tmdb_id: i64, content_dir: &Path, mode: DateMode, existing_paths: &mut HashMap<(String, i64), PathBuf>) -> Result<usize> {
-    let path = entry_path(content_dir, &work.media_type, tmdb_id, existing_paths);
-    let text = fs::read_to_string(&path)?;
-    let data: ExFicha = toml::from_str(&text)?;
-    let mtype = data.media_type.unwrap_or_else(|| work.media_type.clone());
-    let note = data.note;
-    let mut releases: Vec<ReleaseOut> = data.releases.into_iter().map(flatten_release).collect();
-    let mut have: BTreeSet<String> = releases.iter().flat_map(|r| r.links.iter().filter_map(|l| link_hash(l))).collect();
-
+/// Fold the incoming releases into `releases`, adding only links whose hash is
+/// not already present. A TV release with no overlapping episode numbers folds
+/// into the matching same-spec release (bumping its date); otherwise it becomes
+/// a new block, keeping its own metadata. Returns the number of links added.
+fn merge_into(releases: &mut Vec<ReleaseOut>, incoming: Vec<ReleaseOut>) -> usize {
+    let mut have: BTreeSet<String> =
+        releases.iter().flat_map(|r| r.links.iter().filter_map(|l| link_hash(l))).collect();
     let mut added = 0usize;
-    for nr in build_releases(work, mode) {
-        let new_links: Vec<String> = nr.links.iter().filter(|l| link_hash(l).map(|h| !have.contains(&h)).unwrap_or(false)).cloned().collect();
+    for nr in incoming {
+        let new_links: Vec<String> = nr
+            .links
+            .iter()
+            .filter(|l| link_hash(l).map(|h| !have.contains(&h)).unwrap_or(false))
+            .cloned()
+            .collect();
         if new_links.is_empty() {
             continue;
         }
@@ -1461,15 +1464,23 @@ fn merge_entry(work: &Work, tmdb_id: i64, content_dir: &Path, mode: DateMode, ex
             merged.extend(new_links);
             merged.sort_by(|a, b| link_sort_key(a).cmp(&link_sort_key(b)));
             releases[i].links = merged;
-            let d = [releases[i].date.clone(), nr.date.clone()].into_iter().flatten().max();
-            releases[i].date = d;
+            releases[i].date = [releases[i].date.clone(), nr.date.clone()].into_iter().flatten().max();
         } else {
             let mut block = nr.clone();
             block.links = new_links;
             releases.push(block);
         }
     }
+    added
+}
 
+fn merge_entry(work: &Work, tmdb_id: i64, content_dir: &Path, mode: DateMode, existing_paths: &mut HashMap<(String, i64), PathBuf>) -> Result<usize> {
+    let path = entry_path(content_dir, &work.media_type, tmdb_id, existing_paths);
+    let data: ExFicha = toml::from_str(&fs::read_to_string(&path)?)?;
+    let mtype = data.media_type.unwrap_or_else(|| work.media_type.clone());
+    let note = data.note;
+    let mut releases: Vec<ReleaseOut> = data.releases.into_iter().map(flatten_release).collect();
+    let added = merge_into(&mut releases, build_releases(work, mode));
     if added == 0 {
         return Ok(0);
     }
@@ -1905,5 +1916,92 @@ fn write_report(path: &str, records: &[Record], works: &[Work], args: &ImportArg
         lines.push(format!("      files={} seasons={}  candidates: {}", r.files, seasons_str(&r.seasons), if cs.is_empty() { "none".to_string() } else { cs }));
     }
     fs::write(path, lines.join("\n") + "\n")?;
+    Ok(())
+}
+
+// --------------------------------------------------------------------------- //
+// `tordo merge` — merge one content directory into another
+// --------------------------------------------------------------------------- //
+
+#[derive(Args)]
+pub struct MergeArgs {
+    /// Base content directory; new links and entries are added here, in place.
+    pub base: String,
+    /// Content directory to merge onto the base.
+    pub other: String,
+    /// Show what would change, write nothing.
+    #[arg(long)]
+    pub dry_run: bool,
+}
+
+pub fn run_merge(args: MergeArgs) -> Result<()> {
+    let base_dir = absolute(&args.base);
+    let other_dir = absolute(&args.other);
+    if !base_dir.is_dir() {
+        bail!(red(&format!("error: base content not found: {}", base_dir.display())));
+    }
+    if !other_dir.is_dir() {
+        bail!(red(&format!("error: content to merge not found: {}", other_dir.display())));
+    }
+    let mut base = load_existing(&base_dir);
+    let other = load_existing(&other_dir);
+
+    // Process in a stable order so output and any conflicts are reproducible.
+    let mut keys: Vec<(String, i64)> = other.paths.keys().cloned().collect();
+    keys.sort();
+
+    let (mut new_fichas, mut merged_fichas, mut added_links) = (0usize, 0usize, 0usize);
+    for key in keys {
+        let id = key.1;
+        let other_path = &other.paths[&key];
+        let data: ExFicha = toml::from_str(&fs::read_to_string(other_path)?)
+            .with_context(|| format!("parsing {}", other_path.display()))?;
+        let onote = data.note.clone();
+        let omtype = data.media_type.clone().unwrap_or_else(|| key.0.clone());
+        let incoming: Vec<ReleaseOut> = data.releases.into_iter().map(flatten_release).collect();
+
+        if base.ids.contains(&key) {
+            // Same entry on both sides: fold the new links into the base ficha.
+            let base_path = base.paths[&key].clone();
+            let bdata: ExFicha = toml::from_str(&fs::read_to_string(&base_path)?)
+                .with_context(|| format!("parsing {}", base_path.display()))?;
+            let bmtype = bdata.media_type.unwrap_or_else(|| key.0.clone());
+            let bnote = bdata.note;
+            let mut releases: Vec<ReleaseOut> = bdata.releases.into_iter().map(flatten_release).collect();
+            let n = merge_into(&mut releases, incoming);
+            if n > 0 {
+                if !args.dry_run {
+                    fs::write(&base_path, render_ficha(&bmtype, id, &releases, &bnote))?;
+                }
+                merged_fichas += 1;
+                added_links += n;
+                println!("  {} merge  {bmtype}-{id}  {}", cyan("^"), cyan(&format!("+{n} links")));
+            }
+        } else {
+            // Only in the other side: add it to the base under its per-type subdir.
+            let links: usize = incoming.iter().map(|r| r.links.len()).sum();
+            let dest = base_dir.join(subdir(&omtype)).join(format!("{omtype}-{id}.toml"));
+            if !args.dry_run {
+                if let Some(p) = dest.parent() {
+                    fs::create_dir_all(p)?;
+                }
+                fs::write(&dest, render_ficha(&omtype, id, &incoming, &onote))?;
+            }
+            base.ids.insert(key.clone());
+            base.paths.insert(key, dest);
+            new_fichas += 1;
+            added_links += links;
+            println!("  {} new    {omtype}-{id}  ({links} links)", green("+"));
+        }
+    }
+
+    println!(
+        "\n{}: {} new fichas, {} merged, {} links added{}",
+        bold("merge"),
+        green(&new_fichas.to_string()),
+        cyan(&merged_fichas.to_string()),
+        added_links,
+        if args.dry_run { dim(" (dry run, nothing written)") } else { String::new() }
+    );
     Ok(())
 }

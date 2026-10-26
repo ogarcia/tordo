@@ -40,6 +40,8 @@ enum Command {
     },
     /// Import catalog entries from a Rucio database.
     Import(import::ImportArgs),
+    /// Merge one content directory into another (by link hash).
+    Merge(import::MergeArgs),
 }
 
 fn main() -> Result<()> {
@@ -47,6 +49,7 @@ fn main() -> Result<()> {
         None => generate(false, false),
         Some(Command::Generate { refresh_all, refresh_live }) => generate(refresh_all, refresh_live),
         Some(Command::Import(args)) => import::run(args),
+        Some(Command::Merge(args)) => import::run_merge(args),
     }
 }
 

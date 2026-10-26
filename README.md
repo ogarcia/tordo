@@ -28,8 +28,8 @@ client-side, so nothing needs a server.
 
 ## Build
 
-`tordo` has two commands: `generate` (build the site, the default when none is
-given) and `import` (see below). `cargo run` is `cargo run -- generate`:
+`tordo` has three commands: `generate` (build the site, the default when none is
+given), `import`, and `merge` (see below). `cargo run` is `cargo run -- generate`:
 
 ```sh
 export TMDB_READ_TOKEN=...   # TMDB v4 read access token (or TMDB_API_KEY)
@@ -71,10 +71,21 @@ With no `--db`, the Rucio daemon's own database is used. Useful flags:
 nothing), `--auto` (skip uncertain matches), `--limit N`; `tordo import --help`
 lists them all.
 
+## Merging content
+
+`tordo merge <BASE> <OTHER>` folds a second content directory into the first,
+matching by link hash: every entry in `OTHER` is added to `BASE`, and for entries
+already present there only the **new** links are merged in — nothing is
+overwritten. Pass `--dry-run` to preview the changes.
+
+```sh
+cargo run -- merge content ../other-catalog/content
+```
+
 ## Container
 
-A prebuilt image bundles `tordo` and its assets, so you can run either command
-without a Rust toolchain. Mount the catalog at `/catalog`:
+A prebuilt image bundles `tordo` and its assets, so you can run any of its
+commands without a Rust toolchain. Mount the catalog at `/catalog`:
 
 ```sh
 docker run --rm -v "$PWD:/catalog" ghcr.io/ogarcia/tordo          # generate

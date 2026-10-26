@@ -31,9 +31,9 @@ servidor.
 
 ## Construir
 
-`tordo` tiene dos comandos: `generate` (construir el sitio, el que se usa por
-defecto si no indicas ninguno) e `import` (ver más abajo). `cargo run` equivale a
-`cargo run -- generate`:
+`tordo` tiene tres comandos: `generate` (construir el sitio, el que se usa por
+defecto si no indicas ninguno), `import` y `merge` (ver más abajo). `cargo run`
+equivale a `cargo run -- generate`:
 
 ```sh
 export TMDB_READ_TOKEN=...   # token de lectura v4 de TMDB (o TMDB_API_KEY)
@@ -76,10 +76,21 @@ Sin `--db`, se usa la propia base de datos del daemon de Rucio. Flags útiles:
 escribe), `--auto` (salta las coincidencias dudosas), `--limit N`; `tordo import
 --help` los lista todos.
 
+## Fusionar contenido
+
+`tordo merge <BASE> <OTRO>` fusiona un segundo directorio de contenido sobre el
+primero, cotejando por hash de enlace: cada entrada de `OTRO` se añade a `BASE`, y
+para las entradas que ya existen ahí solo se incorporan los enlaces **nuevos** —
+no se sobrescribe nada. Usa `--dry-run` para previsualizar los cambios.
+
+```sh
+cargo run -- merge content ../otro-catalogo/content
+```
+
 ## Contenedor
 
 Una imagen ya construida empaqueta `tordo` y sus recursos, así que puedes ejecutar
-cualquiera de los dos comandos sin tener Rust instalado. Monta el catálogo en
+cualquiera de sus comandos sin tener Rust instalado. Monta el catálogo en
 `/catalog`:
 
 ```sh
