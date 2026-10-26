@@ -1,0 +1,7 @@
+/cache/*
+!/cache/tv-1396.json
+!/cache/movie-278.json
+/content
+/dist
+/target
+/config.toml

@@ -1,0 +1,17 @@
+# Copy this to config.toml and adjust. The TMDB API key is NOT here: it is read
+# from the TMDB_READ_TOKEN / TMDB_API_KEY environment variable at build time.
+title = "My catalog"
+lang = "es"   # UI/content language; must have a matching i18n/<lang>.toml
+
+# Days before an ongoing series is re-requested from TMDB. Films and finished
+# series are fetched only once.
+tmdb_refresh_days = 30
+
+# Everything below is OPTIONAL and only matters if you ever serve the pages
+# somewhere; a local catalog you open from disk needs none of it.
+#
+# base_url = ""                        # absolute base for link-preview URLs
+# description = ""                     # tagline for link previews
+# og_image = "static/og-image.png"     # raster image for link previews
+# contact_telegram = ""                # contact link shown in the footer
+# tmdb_language = "es-ES"              # optional; derived from `lang` otherwise

@@ -1,0 +1,21 @@
+# ───────────────────────────────────────────────────────────────────────────
+# Example entry: a film. Same schema as the series example, but without
+# `season`. See tv-1396.toml for the full field-by-field documentation.
+# ───────────────────────────────────────────────────────────────────────────
+
+type = "movie"     # "tv" or "movie"
+id   = 278         # TMDB id
+
+[[releases]]
+header      = "Edición remasterizada"   # optional human label
+source      = "BluRay"
+resolution  = "1080p"
+container   = "mkv"
+codec.video = "x265"
+codec.audio = "DTS-HD"
+date        = 2026-10-17   # when this set was added (newest release date sorts the home)
+language.audio     = ["es-ES", "en-US"]
+language.subtitles = ["es-ES"]
+links = [
+  "rucio:example-movie-278-1080p",
+]

@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+{% block content %}
+<article class="detail">
+  <div class="detail-head">
+    <div class="poster">
+      {% if f.poster %}
+        <img src="{{ f.poster }}" alt="{{ f.title }}">
+      {% else %}
+        <div class="poster-placeholder"><span>{{ f.title }}</span></div>
+      {% endif %}
+    </div>
+    <div class="detail-meta">
+      <h1>{{ f.title }}{% if f.year %} <span class="year">({{ f.year }})</span>{% endif %}</h1>
+      {% if f.original_title %}<p class="orig-title">{{ f.original_title }}</p>{% endif %}
+      {% if f.tagline %}<p class="tagline">«{{ f.tagline }}»</p>{% endif %}
+      {% if f.rating or f.facts_line %}
+      <div class="facts">
+        {% if f.rating %}<span class="rating">★ {{ f.rating }}</span>{% endif %}
+        {% if f.facts_line %}<span>{{ f.facts_line }}</span>{% endif %}
+      </div>
+      {% endif %}
+      {% if f.genres | length > 0 %}<div class="genres">{% for g in f.genres %}<span class="chip">{{ g }}</span>{% endfor %}</div>{% endif %}
+      {% if f.credit %}<p class="credit">{{ f.credit }}</p>{% endif %}
+      {% if f.overview %}<p class="overview">{{ f.overview }}</p>{% endif %}
+      {% if f.note_html %}<div class="note">{{ f.note_html | safe }}</div>{% endif %}
+    </div>
+  </div>
+
+  <section class="releases">
+  {% for r in f.releases %}
+    <div class="release">
+      {% if r.season or r.header or r.date %}
+      <div class="release-top">
+        {% if r.season or r.header %}
+        <h2 class="release-header">{% if r.season %}<span class="season">{{ t.season }} {{ r.season }}</span>{% if r.header %} · {% endif %}{% endif %}{{ r.header }}</h2>
+        {% else %}<span></span>{% endif %}
+        {% if r.date %}<span class="release-date">{{ r.date }}</span>{% endif %}
+      </div>
+      {% endif %}
+
+      {% if r.note_html %}<div class="release-note">{{ r.note_html | safe }}</div>{% endif %}
+
+      {% if r.badges %}
+      <div class="badges">
+        {% for b in r.badges %}<span class="pill pill-{{ b.kind }}">{{ b.label }}</span>{% endfor %}
+      </div>
+      {% endif %}
+
+      {% if r.audio or r.subtitles %}
+      <div class="langs">
+        {% if r.audio %}<div class="lang-row"><span class="lang-label">{{ t.audio }}</span>{% for l in r.audio %}<span class="lang-chip">{{ l.flag }} {{ l.label }}</span>{% endfor %}</div>{% endif %}
+        {% if r.subtitles %}<div class="lang-row"><span class="lang-label">{{ t.subtitles }}</span>{% for l in r.subtitles %}<span class="lang-chip">{{ l.flag }} {{ l.label }}</span>{% endfor %}</div>{% endif %}
+      </div>
+      {% endif %}
+
+      {% if r.ripper or r.origin %}
+      <ul class="release-tags">
+        {% if r.ripper %}<li><b>{{ t.ripper }}:</b> {{ r.ripper }}</li>{% endif %}
+        {% if r.origin %}<li><b>{{ t.origin }}:</b> {{ r.origin }}</li>{% endif %}
+      </ul>
+      {% endif %}
+
+      <ul class="links">
+        {% for link in r.links %}
+        <li class="link">
+          <label><input type="checkbox" class="link-check" data-url="{{ link.url }}">{% if f.media_type == "tv" %}<span class="link-ep" title="{{ t.episode_col }}">{% if link.episode %}{{ link.episode }}{% else %}–{% endif %}</span>{% endif %} <code>{{ link.url }}</code></label>
+          {% if link.size %}<span class="link-size">{{ link.size }}</span>{% endif %}
+        </li>
+        {% endfor %}
+      </ul>
+
+      <div class="copy-bar">
+        <button class="btn" data-copy="selected" data-copied="{{ t.copied }}">{{ t.copy_selected }}</button>
+        <button class="btn btn-primary" data-copy="all" data-copied="{{ t.copied }}">{{ t.copy_all }}</button>
+      </div>
+    </div>
+  {% endfor %}
+  </section>
+</article>
+{% endblock content %}

@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="controls">
+  <input id="search" type="search" placeholder="{{ t.search_placeholder }}" autocomplete="off">
+  <select id="type" aria-label="{{ t.filter_label }}">
+    <option value="all">{{ t.filter_all }}</option>
+    <option value="movie">{{ t.filter_movies }}</option>
+    <option value="tv">{{ t.filter_series }}</option>
+  </select>
+  <label>{{ t.sort_label }}
+    <select id="sort">
+      <option value="date">{{ t.sort_date }}</option>
+      <option value="title">{{ t.sort_title }}</option>
+      <option value="year">{{ t.sort_year }}</option>
+    </select>
+  </label>
+  <select id="order" aria-label="{{ t.sort_label }}">
+    <option value="desc">{{ t.order_desc }}</option>
+    <option value="asc">{{ t.order_asc }}</option>
+  </select>
+</div>
+
+<p id="no-results" class="no-results" hidden>{{ t.no_results }}</p>
+
+<ul id="cards" class="cards">
+{% for c in cards %}
+  <li class="card" data-title="{{ c.title }}" data-year="{{ c.year }}" data-date="{{ c.date }}" data-type="{{ c.media_type }}">
+    <a href="{{ c.slug }}.html">
+      <div class="poster">
+        {% if c.poster %}
+          <img loading="lazy" src="{{ c.poster }}" alt="{{ c.title }}">
+        {% else %}
+          <div class="poster-placeholder"><span>{{ c.title }}</span></div>
+        {% endif %}
+      </div>
+      <div class="card-body">
+        <div class="card-head">
+          <span class="card-title">{{ c.title }}</span>
+          {% if c.year %}<span class="card-year">{{ c.year }}</span>{% endif %}
+          <span class="badge">{{ c.media_type }}</span>
+        </div>
+        {% if c.has_highlights %}
+        <div class="chips">
+          {% if c.season_count %}
+            <span class="chip">{{ c.season_count }} {% if c.season_count == 1 %}{{ t.season_one }}{% else %}{{ t.season_many }}{% endif %}</span>
+          {% endif %}
+          {% for q in c.resolutions %}<span class="chip">{{ q }}</span>{% endfor %}
+        </div>
+        {% endif %}
+        {% if c.overview %}<p class="card-overview">{{ c.overview }}</p>{% endif %}
+      </div>
+    </a>
+  </li>
+{% endfor %}
+</ul>
+<button id="more" class="btn more-btn" hidden>{{ t.more }}</button>
+{% endblock content %}

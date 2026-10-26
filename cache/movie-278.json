@@ -1,0 +1,59 @@
+{
+  "_fetched_at": 1792396931,
+  "adult": false,
+  "backdrop_path": "/pNjh59JSxChQktamG3LMp9ZoQzp.jpg",
+  "belongs_to_collection": null,
+  "budget": 25000000,
+  "genres": [
+    {
+      "id": 18,
+      "name": "Drama"
+    },
+    {
+      "id": 80,
+      "name": "Crimen"
+    }
+  ],
+  "homepage": "",
+  "id": 278,
+  "imdb_id": "tt0111161",
+  "origin_country": [
+    "US"
+  ],
+  "original_language": "en",
+  "original_title": "The Shawshank Redemption",
+  "overview": "Acusado del asesinato de su mujer, Andrew Dufresne, tras ser condenado a cadena perpetua, es enviado a la prisión de Shawshank. Con el paso de los años conseguirá ganarse la confianza del director del centro y el respeto de sus compañeros presidiarios, especialmente de Red, el jefe de la mafia de los sobornos.",
+  "popularity": 53.2887,
+  "poster_path": "/uRRTV7p6l2ivtODWJVVAMRrwTn2.jpg",
+  "production_companies": [
+    {
+      "id": 97,
+      "logo_path": "/smyTD67uNsdaySnnjVDmh0kyotp.png",
+      "name": "Castle Rock Entertainment",
+      "origin_country": "US"
+    }
+  ],
+  "production_countries": [
+    {
+      "iso_3166_1": "US",
+      "name": "United States of America"
+    }
+  ],
+  "release_date": "1994-09-23",
+  "revenue": 28341469,
+  "runtime": 143,
+  "softcore": false,
+  "spoken_languages": [
+    {
+      "english_name": "English",
+      "iso_639_1": "en",
+      "name": "English"
+    }
+  ],
+  "status": "Released",
+  "tagline": "El miedo te hace prisionero. Sólo la esperanza puede liberar.",
+  "title": "Cadena perpetua",
+  "video": false,
+  "vote_average": 8.732,
+  "vote_count": 31608
+}

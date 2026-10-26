@@ -1,0 +1,77 @@
+# ───────────────────────────────────────────────────────────────────────────
+# Example entry: a TV series.
+#
+# The file name is cosmetic (any name works, and you can prefix it to force an
+# order, e.g. 001-...). What matters is the TMDB type/id below.
+#
+# Put your own entries in content/. When content/ has no .toml file, these
+# documented examples are rendered instead, so a fresh checkout still shows a
+# working demo and doubles as the field reference.
+# ───────────────────────────────────────────────────────────────────────────
+
+type = "tv"        # "tv" or "movie" — picks the TMDB endpoint
+id   = 1396        # TMDB id; title, year, poster and synopsis come from here
+
+# There is no entry-level date: the home page sorts each entry by the NEWEST of
+# its releases' `date` fields (see below), so adding a release — a new season, a
+# better quality, more episodes — resurfaces the entry as recently updated.
+
+# Optional free note for the whole entry (rendered as Markdown).
+note = "Sample note. Is a _Markdown_ note."
+
+# Each [[releases]] is one set of links; repeat it as many times as you need.
+# Their display order is the order you write them. Everything except `links` is
+# OPTIONAL. Technical fields are normalized for display, so you may type them
+# loosely (4k → 4K, H265 → x265, DoVi → DV, DD+ → EAC3…).
+[[releases]]
+season      = 1                      # only for series; omit it for films
+header      = "Versión del director" # optional human label (shown by the badges)
+note        = "Incluye pista comentada." # optional, rendered as Markdown
+source      = "WEB-DL"               # WEB-DL, WEBRip, BluRay, BDRemux, BDRip, HDTV, DVDRip
+resolution  = "4k"                   # 720p, 1080p, 2160p (4K / UHD accepted)
+hdr         = ["DoVi", "HDR10"]      # list: HDR10, HDR10+, DV, HLG (omit for SDR)
+container   = "mkv"                  # mkv, mp4, avi
+codec.video = "H265"                 # x264, x265, AV1, VP9, XviD (H264 / HEVC accepted)
+codec.audio = "DD+ Atmos"            # free text; codec + features (EAC3, Atmos, DTS:X…)
+date        = 2026-10-15             # when this set was added; newest across releases sorts the home
+ripper      = "Ejemplo"              # optional credit
+origin      = "Copia privada"        # optional: where the links come from
+language.audio     = ["en-US", "es-ES"]   # BCP-47 codes → flag + name
+language.subtitles = ["es-ES"]
+links = [
+  # A Rucio link. If it carries &size=<bytes>, a human-readable size column is
+  # shown next to it.
+  "rucio:bb0101bb0101bb0101bb0101bb0101bb0101bb0101bb0101bb0101bb01010000?name=Breaking.Bad.1x01.mkv&size=1739453376",
+  "rucio:example-bb-s01e02?name=Breaking.Bad.1x02.mkv&size=1503238553",
+  "rucio:example-bb-s01e03",
+]
+
+# A second version of the same season (e.g. a lighter one). No header: the
+# badges are its identity.
+[[releases]]
+season      = 1
+source      = "WEBRip"
+resolution  = "720p"
+container   = "mp4"
+codec.video = "x264"
+codec.audio = "AAC"
+language.audio = ["es-ES"]
+links = [
+  "rucio:example-bb-s01-webrip",
+]
+
+[[releases]]
+season      = 2
+header      = "Pack completo"
+source      = "BluRay"
+resolution  = "1080p"
+hdr         = ["HDR10"]
+container   = "mkv"
+codec.video = "x265"
+codec.audio = "EAC3"
+language.audio     = ["en-US"]
+language.subtitles = ["es-ES", "en-US"]
+links = [
+  "rucio:example-bb-s02e01",
+  "rucio:example-bb-s02e02",
+]

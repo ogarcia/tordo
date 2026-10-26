@@ -1,0 +1,182 @@
+{
+  "_fetched_at": 1792396932,
+  "adult": false,
+  "backdrop_path": "/tsRy63Mu5cu8etL1X7ZLyf7UP1M.jpg",
+  "created_by": [
+    {
+      "credit_id": "52542286760ee31328001a7b",
+      "gender": 2,
+      "id": 66633,
+      "name": "Vince Gilligan",
+      "original_name": "Vince Gilligan",
+      "profile_path": "/wJIxATESjzsjSgvRhVavOmdamXc.jpg"
+    }
+  ],
+  "episode_run_time": [],
+  "first_air_date": "2008-01-20",
+  "genres": [
+    {
+      "id": 18,
+      "name": "Drama"
+    },
+    {
+      "id": 80,
+      "name": "Crimen"
+    }
+  ],
+  "homepage": "https://www.sonypictures.com/tv/breakingbad",
+  "id": 1396,
+  "in_production": false,
+  "languages": [
+    "en",
+    "de",
+    "es"
+  ],
+  "last_air_date": "2013-09-29",
+  "last_episode_to_air": {
+    "air_date": "2013-09-29",
+    "episode_number": 16,
+    "episode_type": "finale",
+    "id": 62161,
+    "name": "Felina",
+    "overview": "Todo lo malo llega a su final en el último episodio de Breaking Bad.",
+    "production_code": "",
+    "runtime": 56,
+    "season_number": 5,
+    "show_id": 1396,
+    "still_path": "/pA0YwyhvdDXP3BEGL2grrIhq8aM.jpg",
+    "vote_average": 9.294,
+    "vote_count": 328
+  },
+  "name": "Breaking Bad",
+  "networks": [
+    {
+      "id": 174,
+      "logo_path": "/pmvRmATOCaDykE6JrVoeYxlFHw3.png",
+      "name": "AMC",
+      "origin_country": "US"
+    }
+  ],
+  "next_episode_to_air": null,
+  "number_of_episodes": 62,
+  "number_of_seasons": 5,
+  "origin_country": [
+    "US"
+  ],
+  "original_language": "en",
+  "original_name": "Breaking Bad",
+  "overview": "Un profesor de química con cáncer terminal se asocia con un exalumno suyo para fabricar y vender metanfetamina a fin de que su familia no pase apuros económicos.",
+  "popularity": 246.9512,
+  "poster_path": "/anFx9aTOOYqgS3v7x3R84Kz67ly.jpg",
+  "production_companies": [
+    {
+      "id": 11073,
+      "logo_path": "/wHs44fktdoj6c378ZbSWfzKsM2Z.png",
+      "name": "Sony Pictures Television",
+      "origin_country": "US"
+    },
+    {
+      "id": 33742,
+      "logo_path": "/2jdh2sEa0R6y6uT0F7g0IgA2WO8.png",
+      "name": "High Bridge Productions",
+      "origin_country": "US"
+    },
+    {
+      "id": 2605,
+      "logo_path": null,
+      "name": "Gran Via Productions",
+      "origin_country": "US"
+    }
+  ],
+  "production_countries": [
+    {
+      "iso_3166_1": "US",
+      "name": "United States of America"
+    }
+  ],
+  "seasons": [
+    {
+      "air_date": "2009-02-17",
+      "episode_count": 9,
+      "id": 3577,
+      "name": "Especiales",
+      "overview": "",
+      "poster_path": "/4RaIvSQgHHHPfaI1jFqaMR8UJWM.jpg",
+      "season_number": 0,
+      "vote_average": 0.0
+    },
+    {
+      "air_date": "2008-01-20",
+      "episode_count": 7,
+      "id": 3572,
+      "name": "Temporada 1",
+      "overview": "Bryan Cranston, ganador de un Emmy, interpreta a Walter White, un profesor de química venido a menos que lucha por llegar a fin de mes y mantener a su esposa (Anna Gunn) y a un hijo incapacitado (RJ Mitte). Todo cambia cuando a Walter le diagnostican un cáncer terminal de pulmón. Como sólo le quedan unos cuantos años de vida y no tiene nada que perder, Walter usa sus conocimientos de química para fabricar y vender metanfetamina a uno de sus antiguos estudiantes (Aaron Paul). A medida que el negocio crece, también lo hacen las mentiras, pero Walt hará lo que sea para asegurar el futuro de su familia aunque para ello tenga que arriesgar sus vidas.",
+      "poster_path": "/kmMkmUOdDzbYNFKkMLSRpxEgsvQ.jpg",
+      "season_number": 1,
+      "vote_average": 8.4
+    },
+    {
+      "air_date": "2009-03-08",
+      "episode_count": 13,
+      "id": 3573,
+      "name": "Temporada 2",
+      "overview": "Walt (interpretado por Bryan Cranston, ganador de dos Premios Emmy) y Jesse (Aaron Paul) están con el agua al cuello en la segunda temporada de \"Breaking Bad\". A medida que se estrecha su relación, Walt y Jesse empiezan a ver el lado más oscuro del narcotráfico. Aunque ha hecho fortuna gracias a su metanfetamina azul, a Walt le resulta cada vez más difícil ocultarle la verdad a su esposa Skyler (Anna Gunn), a su hijo Walter Jr. (RJ Mitte) y a su cuñado Hank (Dean Norris), el agente de la D.E.A. Walt lucha por mantener su vida bajo control al lidiar con narcotraficantes despiadados, con una esposa e hijo cada vez más distantes, con el nacimiento inminente de su hija y con un socio drogadicto – y eso sin contar con que debe enfrentarse a un cáncer terminal de pulmón.",
+      "poster_path": "/j5L399rdZOm2zdiBn08ixLomthC.jpg",
+      "season_number": 2,
+      "vote_average": 8.5
+    },
+    {
+      "air_date": "2010-03-21",
+      "episode_count": 13,
+      "id": 3575,
+      "name": "Temporada 3",
+      "overview": "Aunque su cáncer está en remisión, el profesor de química reconvertido en fabricante de metanfetamina Walter White (Cranston) sigue sin poder estar tranquilo. Su mujer (Anna Gunn) ha pedido el divorcio, su cuñado agente de la DEA (Dean Norris) va tras él y su cártel mexicano lo quiere ver muerto. Pero con el futuro de su familia en juego, Walt orquesta un plan que le hará ganar una fortuna, un plan que tiene un precio terrible.",
+      "poster_path": "/vtlWjkvvXdv0Tp2JHL4t8UFJK7E.jpg",
+      "season_number": 3,
+      "vote_average": 8.4
+    },
+    {
+      "air_date": "2011-07-17",
+      "episode_count": 13,
+      "id": 3576,
+      "name": "Temporada 4",
+      "overview": "Esta temporada da una vuelta de tuerca más a la particular bajada a los infiernos de Walter White, un profesor de química que se convierte en un pez gordo del mundo de las drogas para dejar bien provista a su familia, y que en paralelo va perdiendo humanidad episodio tras episodio. Su particular asociación con Jesse Pinkman, un antiguo alumno suyo experto en metanfetaminas, se va degradando a medida que Jesse entiende que su profesor es mucho más oscuro y más criminal que él.",
+      "poster_path": "/yYAef6gpzpSLvoBzxBEvh0HjckU.jpg",
+      "season_number": 4,
+      "vote_average": 8.6
+    },
+    {
+      "air_date": "2012-07-15",
+      "episode_count": 16,
+      "id": 3578,
+      "name": "Temporada 5",
+      "overview": "El poder a veces resulta una pesada carga. Bryan Cranston y Aaron Paul regresan en su papel como ganadores del Premio Emmy por la interpretación de Walter White y Jesse Pinkman respectivamente en una quinta temporada de Breaking Bad explosiva. Tras la muerte de Gus Fring, la transformación de Walt de buen padre de familia a implacable rey de la droga casi ha terminado. Gracias a su acuerdo con Jesse y Mike (Jonathan Banks), Walt se queda con el mercado de la meta hasta que sus sucios asuntos se ven amenazados por un nuevo descubrimiento de su incansable cuñado Hank (Dean Norris).",
+      "poster_path": "/f19HunT4sQO0uGYct3p81yVfhB1.jpg",
+      "season_number": 5,
+      "vote_average": 8.9
+    }
+  ],
+  "softcore": false,
+  "spoken_languages": [
+    {
+      "english_name": "English",
+      "iso_639_1": "en",
+      "name": "English"
+    },
+    {
+      "english_name": "German",
+      "iso_639_1": "de",
+      "name": "Deutsch"
+    },
+    {
+      "english_name": "Spanish",
+      "iso_639_1": "es",
+      "name": "Español"
+    }
+  ],
+  "status": "Ended",
+  "tagline": "Recuerda mi nombre",
+  "type": "Scripted",
+  "vote_average": 8.955,
+  "vote_count": 18874
+}
