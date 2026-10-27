@@ -44,6 +44,7 @@
         <div class="stat"><span class="stat-num">{{ site.stats.releases }}</span><span class="stat-label">{{ t.stat_releases }}</span></div>
         <div class="stat"><span class="stat-num">{{ site.stats.links }}</span><span class="stat-label">{{ t.stat_links }}</span></div>
       </div>
+      <p class="rucio-note">{{ t.rucio_note }} <a href="{{ t.rucio_url }}" target="_blank" rel="noopener">Rucio</a>.</p>
       {% if site.telegram %}<p class="modal-contribute">{{ t.contribute }} <a href="{{ site.telegram }}" target="_blank" rel="noopener">Telegram</a>.</p>{% endif %}
       <p class="tmdb-note">
         <a href="https://www.themoviedb.org/" target="_blank" rel="noopener">The Movie Database (TMDB)</a><br>

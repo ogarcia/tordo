@@ -127,6 +127,7 @@ main { max-width: 1100px; margin: 0 auto; padding: 20px; }
 }
 .stat-label { font-size: 12px; color: var(--muted); text-align: center; }
 
+.rucio-note { margin: 18px 0 0; font-size: 13px; color: var(--muted); line-height: 1.5; }
 .modal-contribute { margin: 18px 0 0; font-size: 13px; color: var(--muted); line-height: 1.5; }
 .tmdb-note { margin: 12px 0 0; font-size: 12px; color: var(--muted); line-height: 1.5; }
 
