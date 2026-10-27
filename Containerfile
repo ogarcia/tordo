@@ -74,6 +74,7 @@ COPY examples ./examples
 COPY i18n ./i18n
 COPY config.example.toml ./config.example.toml
 
+ENV TORDO_ASSETS=/app
 ENV CATALOG_DIR=/catalog
 ENV CATALOG_OUT=/catalog/dist
 

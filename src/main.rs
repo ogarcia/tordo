@@ -920,12 +920,19 @@ fn generate(refresh_all: bool, refresh_live: bool) -> Result<()> {
     // bundled config.example.toml, so a fresh checkout still builds the demo.
     let catalog = std::env::var("CATALOG_DIR").unwrap_or_else(|_| ".".to_string());
     let catalog = Path::new(&catalog);
+    // Software assets (templates, i18n, static, the examples demo and the
+    // config.example.toml fallback) ship with the binary, not in the catalog.
+    // They are read relative to TORDO_ASSETS (default: the current directory),
+    // so the generator runs from any working directory — e.g. a container that
+    // mounts the catalog elsewhere.
+    let assets = std::env::var("TORDO_ASSETS").unwrap_or_else(|_| ".".to_string());
+    let assets = Path::new(&assets);
     let config_path = {
         let own = catalog.join("config.toml");
         if own.exists() {
             own
         } else {
-            Path::new("config.example.toml").to_path_buf()
+            assets.join("config.example.toml")
         }
     };
     let cfg: SiteConfig = toml::from_str(
@@ -953,13 +960,21 @@ fn generate(refresh_all: bool, refresh_live: bool) -> Result<()> {
     let cache_dir = catalog.join(CACHE_DIR);
 
     let locale: HashMap<String, String> = {
-        let path = format!("i18n/{}.toml", cfg.lang);
-        toml::from_str(&fs::read_to_string(&path).with_context(|| format!("reading {path}"))?)?
+        let path = assets.join(format!("i18n/{}.toml", cfg.lang));
+        toml::from_str(
+            &fs::read_to_string(&path)
+                .with_context(|| format!("reading {}", path.display()))?,
+        )?
     };
 
     let mut tera = Tera::new();
-    tera.load_from_glob("templates/**/*.html")
-        .context("loading templates")?;
+    let templates_glob = assets.join("templates/**/*.html");
+    tera.load_from_glob(
+        templates_glob
+            .to_str()
+            .context("TORDO_ASSETS path is not valid UTF-8")?,
+    )
+    .context("loading templates")?;
 
     // Read and enrich every ficha, scanning content/ recursively so its layout
     // is free (flat, or split into tv/ and movies/). Fall back to the documented
@@ -967,7 +982,7 @@ fn generate(refresh_all: bool, refresh_live: bool) -> Result<()> {
     // demo.
     let mut entries = collect_toml(&content_dir);
     let source = if entries.is_empty() {
-        entries = collect_toml(Path::new(EXAMPLES_DIR));
+        entries = collect_toml(&assets.join(EXAMPLES_DIR));
         EXAMPLES_DIR
     } else {
         CONTENT_DIR
@@ -1150,7 +1165,7 @@ fn generate(refresh_all: bool, refresh_live: bool) -> Result<()> {
         )?;
     }
 
-    copy_dir(Path::new(STATIC_DIR), &out.join("static"))?;
+    copy_dir(&assets.join(STATIC_DIR), &out.join("static"))?;
 
     // The link-preview image belongs to the catalog (its title/branding), so a
     // catalog can ship its own next to its config. When `og_image` points at a
