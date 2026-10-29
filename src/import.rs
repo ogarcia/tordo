@@ -20,7 +20,7 @@ use anyhow::{Context as _, Result, bail};
 use clap::{Args, ValueEnum};
 use difflib::sequencematcher::SequenceMatcher;
 use regex::Regex;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use unicode_normalization::UnicodeNormalization;
 
@@ -92,6 +92,15 @@ pub struct ImportArgs {
     /// Offline: group and parse only, no TMDB, no files written.
     #[arg(long)]
     pub plan: bool,
+
+    /// Offline: extract the parsed works (links + release details) to PATH as
+    /// JSON, no TMDB. Hand the file to someone who runs --from-works.
+    #[arg(long, value_name = "PATH")]
+    pub export: Option<String>,
+
+    /// Import from a works file written by --export instead of a Rucio DB.
+    #[arg(long, value_name = "PATH")]
+    pub from_works: Option<String>,
 
     /// Query TMDB and build the report, but write no .toml files.
     #[arg(long)]
@@ -432,7 +441,7 @@ fn title_from_filename(name: &str) -> String {
     clean_title(&cut_tech(base, false))
 }
 
-#[derive(Clone, Default, PartialEq, Eq, Hash)]
+#[derive(Clone, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 struct Release {
     resolution: Option<String>,
     source: Option<String>,
@@ -523,7 +532,7 @@ fn parse_langs(name: &str) -> (Vec<String>, Vec<String>) {
 // Grouping shared files into works
 // --------------------------------------------------------------------------- //
 
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize)]
 struct FileRec {
     hash: String,
     name: String,
@@ -534,11 +543,13 @@ struct FileRec {
     rel: Release,
 }
 
+#[derive(Serialize, Deserialize)]
 struct Work {
     media_type: String,
     title: String,
     year: Option<String>,
     files: Vec<FileRec>,
+    #[serde(default)]
     warnings: BTreeSet<String>,
 }
 
@@ -552,6 +563,39 @@ impl Work {
     fn newest(&self) -> i64 {
         self.files.iter().map(|f| f.added_at).max().unwrap_or(0)
     }
+}
+
+/// On-disk envelope for the offline link hand-off (`--export` / `--from-works`):
+/// the parsed works with their links and release details, before any TMDB
+/// resolution. Lets a contributor without a TMDB credential extract links from a
+/// Rucio DB and pass them to someone who finishes the import.
+const WORKS_FORMAT_VERSION: u32 = 1;
+
+#[derive(Serialize, Deserialize)]
+struct WorksFile {
+    version: u32,
+    works: Vec<Work>,
+}
+
+/// Load works from a `--export` file, dropping files already linked in this
+/// catalog (and works thereby left empty), so a re-import stays idempotent.
+fn load_works_file(path: &str, linked: &BTreeSet<String>) -> Result<Vec<Work>> {
+    let text = fs::read_to_string(path)
+        .with_context(|| red(&format!("error: cannot read works file: {path}")))?;
+    let doc: WorksFile = serde_json::from_str(&text)
+        .with_context(|| red(&format!("error: not a valid works file: {path}")))?;
+    if doc.version != WORKS_FORMAT_VERSION {
+        bail!(red(&format!(
+            "error: works file version {} is not supported (expected {WORKS_FORMAT_VERSION}).",
+            doc.version
+        )));
+    }
+    let mut works = doc.works;
+    for w in &mut works {
+        w.files.retain(|f| !linked.contains(&f.hash));
+    }
+    works.retain(|w| !w.files.is_empty());
+    Ok(works)
 }
 
 type Row = (String, String, i64, String, i64); // hash, name, size, path, added_at
@@ -1514,19 +1558,10 @@ fn parse_id(s: &str, default_type: &str) -> Option<(String, i64)> {
 }
 
 pub fn run(args: ImportArgs) -> Result<()> {
-    // Fail fast: resolve and validate everything before doing any work.
-    let db = resolve_db(&args.db)?;
-    if !db.exists() {
-        bail!(red(&format!(
-            "error: database not found: {}\n       pass --db PATH (e.g. the Rucio daemon's rucio.db).",
-            db.display()
-        )));
-    }
-    let rows = read_rows(&db).map_err(|e| anyhow::anyhow!(red(&format!("error: {e}"))))?;
-    if !args.plan && args.tmdb_key.is_none() && args.tmdb_token.is_none() {
-        bail!(red(
-            "error: no TMDB credential. Set TMDB_READ_TOKEN (v4) or TMDB_API_KEY (v3),\n       pass --tmdb-token/--tmdb-key, or use --plan for an offline preview."
-        ));
+    // Mutually exclusive inputs: --from-works reads an already-parsed file, so
+    // there is nothing for --export to extract.
+    if args.from_works.is_some() && args.export.is_some() {
+        bail!(red("error: --from-works and --export cannot be combined."));
     }
 
     let content_dir = resolve_content(&args.content)?;
@@ -1537,56 +1572,83 @@ pub fn run(args: ImportArgs) -> Result<()> {
         existing.linked.len()
     );
 
-    let mut overrides: Vec<(Vec<String>, String)> = Vec::new();
-    for p in &args.series {
-        overrides.push((path_parts(p), "series".into()));
-    }
-    for p in &args.movies {
-        overrides.push((path_parts(p), "movies".into()));
-    }
-    for p in &args.mixed {
-        overrides.push((path_parts(p), "mixed".into()));
-    }
-    overrides.sort_by(|a, b| b.0.len().cmp(&a.0.len()));
+    // Obtain the works either from a previously exported file (the offline link
+    // hand-off) or by parsing a Rucio database.
+    let mut works = if let Some(path) = &args.from_works {
+        let works = load_works_file(path, &existing.linked)?;
+        let tv = works.iter().filter(|w| w.media_type == "tv").count();
+        println!(
+            "{}  ({tv} series, {} films)\n",
+            bold(&format!("Works from {path}: {}", works.len())),
+            works.len() - tv
+        );
+        works
+    } else {
+        // Fail fast: resolve and validate the database before doing any work.
+        let db = resolve_db(&args.db)?;
+        if !db.exists() {
+            bail!(red(&format!(
+                "error: database not found: {}\n       pass --db PATH (e.g. the Rucio daemon's rucio.db).",
+                db.display()
+            )));
+        }
+        let rows = read_rows(&db).map_err(|e| anyhow::anyhow!(red(&format!("error: {e}"))))?;
 
-    let interactive = !args.auto && !args.plan && !args.dry_run && io::stdin().is_terminal();
-    if interactive {
-        let chosen = confirm_libraries(&detect_libraries(&rows, &existing.linked, &overrides));
-        for (zd, r) in chosen {
-            overrides.push((path_parts(&zd), r));
+        let mut overrides: Vec<(Vec<String>, String)> = Vec::new();
+        for p in &args.series {
+            overrides.push((path_parts(p), "series".into()));
+        }
+        for p in &args.movies {
+            overrides.push((path_parts(p), "movies".into()));
+        }
+        for p in &args.mixed {
+            overrides.push((path_parts(p), "mixed".into()));
         }
         overrides.sort_by(|a, b| b.0.len().cmp(&a.0.len()));
-    }
 
-    let BuildOut { mut works, skipped_linked, skipped_nonvideo, role_dirs } =
-        build_works(&rows, &existing.linked, &overrides);
+        // --plan and --export are offline previews: never prompt for libraries.
+        let offline = args.plan || args.export.is_some();
+        let interactive = !args.auto && !offline && !args.dry_run && io::stdin().is_terminal();
+        if interactive {
+            let chosen = confirm_libraries(&detect_libraries(&rows, &existing.linked, &overrides));
+            for (zd, r) in chosen {
+                overrides.push((path_parts(&zd), r));
+            }
+            overrides.sort_by(|a, b| b.0.len().cmp(&a.0.len()));
+        }
+
+        let BuildOut { works, skipped_linked, skipped_nonvideo, role_dirs } =
+            build_works(&rows, &existing.linked, &overrides);
+
+        if !interactive {
+            println!("{}", bold("Detected libraries") + &dim(" (override with --series/--movies/--mixed DIR):"));
+            for role in ["series", "movies", "mixed"] {
+                if let Some(dirs) = role_dirs.get(role) {
+                    for d in dirs {
+                        println!("  {} {d}", cyan(&format!("{role:7}")));
+                    }
+                }
+            }
+            println!();
+        }
+
+        let tv = works.iter().filter(|w| w.media_type == "tv").count();
+        println!(
+            "DB rows: {} | skipped (already linked): {skipped_linked} | skipped (non-video): {skipped_nonvideo}",
+            rows.len()
+        );
+        println!(
+            "{}  ({tv} series, {} films)\n",
+            bold(&format!("New works to import: {}", works.len())),
+            works.len() - tv
+        );
+        works
+    };
+
     works.sort_by(|a, b| b.newest().cmp(&a.newest()));
     if args.limit > 0 {
         works.truncate(args.limit);
     }
-
-    if !interactive {
-        println!("{}", bold("Detected libraries") + &dim(" (override with --series/--movies/--mixed DIR):"));
-        for role in ["series", "movies", "mixed"] {
-            if let Some(dirs) = role_dirs.get(role) {
-                for d in dirs {
-                    println!("  {} {d}", cyan(&format!("{role:7}")));
-                }
-            }
-        }
-        println!();
-    }
-
-    let tv = works.iter().filter(|w| w.media_type == "tv").count();
-    println!(
-        "DB rows: {} | skipped (already linked): {skipped_linked} | skipped (non-video): {skipped_nonvideo}",
-        rows.len()
-    );
-    println!(
-        "{}  ({tv} series, {} films)\n",
-        bold(&format!("New works to import: {}", works.len())),
-        works.len() - tv
-    );
 
     if args.plan {
         let mut plan = Vec::new();
@@ -1613,6 +1675,30 @@ pub fn run(args: ImportArgs) -> Result<()> {
             println!("\n{}{}{}", bold("Plan: "), absolute(path).display(), dim(" (offline, nothing imported)"));
         }
         return Ok(());
+    }
+
+    // --export: write the parsed works (links + release details) for someone
+    // else to finish with --from-works. Offline, no TMDB.
+    if let Some(path) = &args.export {
+        let doc = WorksFile { version: WORKS_FORMAT_VERSION, works };
+        fs::write(path, serde_json::to_string_pretty(&doc)?)?;
+        let links: usize = doc.works.iter().map(|w| w.files.len()).sum();
+        println!(
+            "\n{}{} ({} works, {} links){}",
+            bold("Exported: "),
+            absolute(path).display(),
+            doc.works.len(),
+            links,
+            dim(" — finish with `tordo import --from-works`.")
+        );
+        return Ok(());
+    }
+
+    // Real import (DB or works file): a TMDB credential is required.
+    if args.tmdb_key.is_none() && args.tmdb_token.is_none() {
+        bail!(red(
+            "error: no TMDB credential. Set TMDB_READ_TOKEN (v4) or TMDB_API_KEY (v3),\n       pass --tmdb-token/--tmdb-key, or use --plan for an offline preview."
+        ));
     }
 
     let cache_path = content_dir
