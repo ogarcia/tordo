@@ -1790,6 +1790,17 @@ fn seasons_str(ss: &[i64]) -> String {
     }
 }
 
+fn human_size(bytes: i64) -> String {
+    const UNITS: [&str; 5] = ["B", "KiB", "MiB", "GiB", "TiB"];
+    let mut v = bytes as f64;
+    let mut u = 0;
+    while v >= 1024.0 && u < UNITS.len() - 1 {
+        v /= 1024.0;
+        u += 1;
+    }
+    if u == 0 { format!("{bytes} B") } else { format!("{v:.1} {}", UNITS[u]) }
+}
+
 fn review(records: &mut [Record], works: &[Work], content_dir: &Path, mode: DateMode, existing: &mut Existing) -> Result<()> {
     let doubtful: Vec<usize> = records.iter().enumerate().filter(|(_, r)| r.status == "doubtful").map(|(i, _)| i).collect();
     if doubtful.is_empty() {
@@ -1814,6 +1825,20 @@ fn review(records: &mut [Record], works: &[Work], content_dir: &Path, mode: Date
             seasons_str(&w.seasons()),
             yellow(&reason)
         );
+        // Show a sample of the actual shared files so the user can recognise
+        // the work from the real names, not just the (possibly wrong) title.
+        const SAMPLE: usize = 4;
+        for f in w.files.iter().take(SAMPLE) {
+            let tag = match (f.season, f.episode) {
+                (Some(s), Some(e)) => format!("S{s:02}E{e:02} · "),
+                (None, Some(e)) => format!("E{e:02} · "),
+                _ => String::new(),
+            };
+            println!("     {} {}  {}", dim("·"), f.name, dim(&format!("[{tag}{}]", human_size(f.size))));
+        }
+        if w.files.len() > SAMPLE {
+            println!("     {}", dim(&format!("… +{} more files", w.files.len() - SAMPLE)));
+        }
         for (i, c) in cands.iter().enumerate() {
             let mark = if dflt == Some(i) { format!("  {}", green("<- Enter")) } else { String::new() };
             println!(
