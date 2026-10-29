@@ -76,6 +76,13 @@ Sin `--db`, se usa la propia base de datos del daemon de Rucio. Flags útiles:
 escribe), `--auto` (salta las coincidencias dudosas), `--limit N`; `tordo import
 --help` los lista todos.
 
+Sin credencial de TMDB aún puedes extraer los enlaces sin conexión con
+`--export enlaces.json`: agrupa la base de datos en obras y escribe sus enlaces y
+detalles de release en un fichero, sin TMDB. Quien sí tenga credencial termina
+la importación desde ese fichero con `--from-works enlaces.json` en vez de una
+base de datos. Los enlaces que ya están en el catálogo de destino se omiten, así
+que reimportar es seguro.
+
 ## Fusionar contenido
 
 `tordo merge <BASE> <OTRO>` fusiona un segundo directorio de contenido sobre el

@@ -71,6 +71,12 @@ With no `--db`, the Rucio daemon's own database is used. Useful flags:
 nothing), `--auto` (skip uncertain matches), `--limit N`; `tordo import --help`
 lists them all.
 
+Without a TMDB credential you can still extract the links offline with
+`--export links.json`: it groups the database into works and writes their links
+and release details to a file, no TMDB. Someone with a credential then finishes
+the import from that file with `--from-works links.json` instead of a database.
+Links already present in the target catalog are skipped, so re-importing is safe.
+
 ## Merging content
 
 `tordo merge <BASE> <OTHER>` folds a second content directory into the first,
