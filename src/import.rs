@@ -1849,6 +1849,8 @@ fn review(records: &mut [Record], works: &[Work], content_dir: &Path, mode: Date
                 green(&c.id.to_string()),
                 c.score
             );
+            // The clickable TMDB page, so the user can confirm the match.
+            println!("      {}", dim(&format!("https://www.themoviedb.org/{media_type}/{}", c.id)));
         }
         let enter = match dflt {
             Some(d) => format!("Enter={}", d + 1),
