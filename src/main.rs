@@ -282,7 +282,9 @@ fn tmdb_fetch(
     ttl_secs: u64,
     cache_dir: &Path,
 ) -> Result<serde_json::Value> {
-    let cache_path = cache_dir.join(format!("{media_type}-{id}.json"));
+    // Payloads are split by media type (cache/movies/, cache/tv/) so a large
+    // catalog does not pile thousands of files into one directory.
+    let cache_path = cache_dir.join(import::subdir(media_type)).join(format!("{media_type}-{id}.json"));
 
     let cached: Option<serde_json::Value> = if cache_path.exists() {
         Some(serde_json::from_slice(&fs::read(&cache_path)?)?)
@@ -314,7 +316,9 @@ fn tmdb_fetch(
     match tmdb_get(media_type, id, lang) {
         Ok(mut v) => {
             v["_fetched_at"] = serde_json::json!(now_secs());
-            fs::create_dir_all(cache_dir)?;
+            if let Some(parent) = cache_path.parent() {
+                fs::create_dir_all(parent)?;
+            }
             fs::write(&cache_path, serde_json::to_vec_pretty(&v)?)?;
             Ok(v)
         }

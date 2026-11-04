@@ -1369,7 +1369,7 @@ fn datetime_str(secs: i64) -> String {
 // Driver
 // --------------------------------------------------------------------------- //
 
-fn subdir(media_type: &str) -> &'static str {
+pub(crate) fn subdir(media_type: &str) -> &'static str {
     match media_type {
         "tv" => "tv",
         "movie" => "movies",
