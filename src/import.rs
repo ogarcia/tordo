@@ -841,36 +841,56 @@ fn confirm_libraries(libs: &[(String, String, usize)]) -> HashMap<String, String
 // TMDB resolution
 // --------------------------------------------------------------------------- //
 
+/// Stable FNV-1a hash, rendered as 16 hex chars, used to name one search-cache
+/// file per query. Stable across runs and machines, unlike the std hasher.
+fn hash_key(s: &str) -> String {
+    let mut h: u64 = 0xcbf2_9ce4_8422_2325;
+    for b in s.as_bytes() {
+        h ^= *b as u64;
+        h = h.wrapping_mul(0x0000_0100_0000_01b3);
+    }
+    format!("{h:016x}")
+}
+
 struct Tmdb {
     key: Option<String>,
     token: Option<String>,
     lang: String,
-    cache_path: PathBuf,
-    cache: HashMap<String, Value>,
+    /// Base `cache/search` directory; each query is memoized in its own
+    /// `search/<movies|tv>/<hash>.json` file so concurrent imports from
+    /// different machines add files instead of rewriting one shared blob.
+    cache_dir: PathBuf,
+    /// Within-run memo so the same title is not re-read or re-queried twice.
+    memo: HashMap<String, Vec<Value>>,
 }
 
 impl Tmdb {
-    fn new(key: Option<String>, token: Option<String>, lang: String, cache_path: PathBuf) -> Self {
-        let cache = fs::read_to_string(&cache_path)
-            .ok()
-            .and_then(|s| serde_json::from_str(&s).ok())
-            .unwrap_or_default();
-        Tmdb { key, token, lang, cache_path, cache }
+    fn new(key: Option<String>, token: Option<String>, lang: String, cache_dir: PathBuf) -> Self {
+        Tmdb { key, token, lang, cache_dir, memo: HashMap::new() }
     }
 
-    fn save(&self) {
-        if let Ok(s) = serde_json::to_string(&self.cache) {
-            let tmp = self.cache_path.with_extension("json.tmp");
-            if fs::write(&tmp, s).is_ok() {
-                let _ = fs::rename(&tmp, &self.cache_path);
-            }
-        }
+    fn cache_file(&self, media_type: &str, ck: &str) -> PathBuf {
+        self.cache_dir.join(subdir(media_type)).join(format!("{}.json", hash_key(ck)))
     }
 
     fn search(&mut self, media_type: &str, title: &str, year: &Option<String>) -> Vec<Value> {
-        let ck = format!("{media_type}\t{title}\t{}", year.clone().unwrap_or_default());
-        if let Some(v) = self.cache.get(&ck) {
-            return v.as_array().cloned().unwrap_or_default();
+        // The language is part of the key: results are localized, and different
+        // users may import under different languages into the same catalog.
+        let ck = format!("{media_type}\t{title}\t{}\t{}", year.clone().unwrap_or_default(), self.lang);
+        if let Some(v) = self.memo.get(&ck) {
+            return v.clone();
+        }
+        let path = self.cache_file(media_type, &ck);
+        if let Ok(s) = fs::read_to_string(&path) {
+            // Guard against the (astronomically rare) hash collision: only trust
+            // a file whose stored key matches the one we are looking up.
+            if let Ok(doc) = serde_json::from_str::<Value>(&s) {
+                if doc.get("key").and_then(|k| k.as_str()) == Some(ck.as_str()) {
+                    let results = doc.get("results").and_then(|r| r.as_array()).cloned().unwrap_or_default();
+                    self.memo.insert(ck, results.clone());
+                    return results;
+                }
+            }
         }
         let mut url = format!(
             "https://api.themoviedb.org/3/search/{media_type}?language={}&query={}&include_adult=false",
@@ -887,10 +907,25 @@ impl Tmdb {
             url.push_str(&format!("&{field}={y}"));
         }
         let results = self.get(&url);
-        self.cache.insert(ck, Value::Array(results.clone()));
-        self.save();
+        self.save(&path, &ck, &results);
+        self.memo.insert(ck, results.clone());
         std::thread::sleep(Duration::from_millis(300));
         results
+    }
+
+    fn save(&self, path: &Path, ck: &str, results: &[Value]) {
+        if let Some(parent) = path.parent() {
+            if fs::create_dir_all(parent).is_err() {
+                return;
+            }
+        }
+        let doc = json!({ "key": ck, "results": results });
+        if let Ok(s) = serde_json::to_string_pretty(&doc) {
+            let tmp = path.with_extension("json.tmp");
+            if fs::write(&tmp, s).is_ok() {
+                let _ = fs::rename(&tmp, path);
+            }
+        }
     }
 
     fn get(&self, url: &str) -> Vec<Value> {
@@ -1701,15 +1736,12 @@ pub fn run(args: ImportArgs) -> Result<()> {
         ));
     }
 
-    let cache_path = content_dir
+    let cache_dir = content_dir
         .parent()
         .unwrap_or(Path::new("."))
         .join("cache")
-        .join("tmdb-search-cache.json");
-    if let Some(parent) = cache_path.parent() {
-        fs::create_dir_all(parent)?;
-    }
-    let mut tmdb = Tmdb::new(args.tmdb_key.clone(), args.tmdb_token.clone(), args.lang.clone(), cache_path);
+        .join("search");
+    let mut tmdb = Tmdb::new(args.tmdb_key.clone(), args.tmdb_token.clone(), args.lang.clone(), cache_dir);
     if args.dry_run {
         println!("{}: querying TMDB, writing no .toml files.\n", yellow(&bold("DRY RUN")));
     } else {
