@@ -48,8 +48,8 @@
 
       {% if r.audio or r.subtitles %}
       <div class="langs">
-        {% if r.audio %}<div class="lang-row"><span class="lang-label">{{ t.audio }}</span>{% for l in r.audio %}<span class="lang-chip">{{ l.flag }} {{ l.label }}</span>{% endfor %}</div>{% endif %}
-        {% if r.subtitles %}<div class="lang-row"><span class="lang-label">{{ t.subtitles }}</span>{% for l in r.subtitles %}<span class="lang-chip">{{ l.flag }} {{ l.label }}</span>{% endfor %}</div>{% endif %}
+        {% if r.audio %}<div class="lang-row"><span class="lang-label">{{ t.audio }}</span>{% for l in r.audio %}<span class="lang-chip">{{ l.flag }} {{ l.label }}{% if l.access == "AD" %} <span class="lang-access" title="{{ t.access_ad }}">AD</span>{% elif l.access == "SDH" %} <span class="lang-access" title="{{ t.access_sdh }}">SDH</span>{% endif %}</span>{% endfor %}</div>{% endif %}
+        {% if r.subtitles %}<div class="lang-row"><span class="lang-label">{{ t.subtitles }}</span>{% for l in r.subtitles %}<span class="lang-chip">{{ l.flag }} {{ l.label }}{% if l.access == "AD" %} <span class="lang-access" title="{{ t.access_ad }}">AD</span>{% elif l.access == "SDH" %} <span class="lang-access" title="{{ t.access_sdh }}">SDH</span>{% endif %}</span>{% endfor %}</div>{% endif %}
       </div>
       {% endif %}
 

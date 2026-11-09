@@ -146,8 +146,16 @@ struct RawCodec {
 struct RawLanguage {
     #[serde(default)]
     audio: Vec<String>,
+    /// Audio-description tracks (narration of the on-screen action for blind and
+    /// low-vision viewers). Flagged `AD` and listed after the plain audio tracks.
+    #[serde(default)]
+    audio_description: Vec<String>,
     #[serde(default)]
     subtitles: Vec<String>,
+    /// Subtitles for the deaf and hard of hearing (SDH): dialogue plus sound,
+    /// music and speaker cues. Flagged `SDH` and listed after the plain subtitles.
+    #[serde(default)]
+    subtitles_sdh: Vec<String>,
 }
 
 // ---------------------------------------------------------------------------
@@ -176,6 +184,9 @@ struct Lang {
     code: String,
     label: String,
     flag: String,
+    /// Accessibility marker shown next to the chip: `AD` (audio description),
+    /// `SDH` (subtitles for the deaf), or empty for a plain track.
+    access: String,
 }
 
 #[derive(Serialize)]
@@ -494,7 +505,7 @@ fn fmt_runtime(min: i64) -> String {
 // Language helpers: a BCP-47-ish code becomes a human label plus a flag emoji
 // ---------------------------------------------------------------------------
 
-fn lang_view(code: &str) -> Lang {
+fn lang_view(code: &str, access: &str) -> Lang {
     let code = code.trim();
     let mut parts = code.split(['-', '_']);
     let primary = parts.next().unwrap_or_default().to_lowercase();
@@ -525,6 +536,7 @@ fn lang_view(code: &str) -> Lang {
         code: code.to_string(),
         label,
         flag: flag(&region),
+        access: access.to_string(),
     }
 }
 
@@ -818,8 +830,11 @@ fn human_size(bytes: u64) -> String {
 
 fn release_view(r: RawRelease) -> ReleaseView {
     let lang = r.language.unwrap_or_default();
-    let audio: Vec<Lang> = lang.audio.iter().map(|c| lang_view(c)).collect();
-    let subtitles: Vec<Lang> = lang.subtitles.iter().map(|c| lang_view(c)).collect();
+    // Plain tracks first, then the accessible variants flagged AD / SDH.
+    let mut audio: Vec<Lang> = lang.audio.iter().map(|c| lang_view(c, "")).collect();
+    audio.extend(lang.audio_description.iter().map(|c| lang_view(c, "AD")));
+    let mut subtitles: Vec<Lang> = lang.subtitles.iter().map(|c| lang_view(c, "")).collect();
+    subtitles.extend(lang.subtitles_sdh.iter().map(|c| lang_view(c, "SDH")));
     let date = r.date.map(|d| d.to_string()).unwrap_or_default();
     let ripper = r.ripper.unwrap_or_default();
     let origin = r.origin.unwrap_or_default();

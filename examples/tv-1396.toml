@@ -38,6 +38,10 @@ ripper      = "Ejemplo"              # optional credit
 origin      = "Copia privada"        # optional: where the links come from
 language.audio     = ["en-US", "es-ES"]   # BCP-47 codes → flag + name
 language.subtitles = ["es-ES"]
+# Accessible tracks (optional): audio description for blind viewers (flagged AD)
+# and subtitles for the deaf and hard of hearing (flagged SDH). Same code format.
+language.audio_description = ["es-ES"]
+language.subtitles_sdh     = ["es-ES"]
 links = [
   # A Rucio link. If it carries &size=<bytes>, a human-readable size column is
   # shown next to it.
