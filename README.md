@@ -28,8 +28,9 @@ client-side, so nothing needs a server.
 
 ## Build
 
-`tordo` has three commands: `generate` (build the site, the default when none is
-given), `import`, and `merge` (see below). `cargo run` is `cargo run -- generate`:
+`tordo` has four commands: `generate` (build the site, the default when none is
+given), `import`, `merge`, and `check-cache` (see below). `cargo run` is `cargo
+run -- generate`:
 
 ```sh
 export TMDB_READ_TOKEN=...   # TMDB v4 read access token (or TMDB_API_KEY)
@@ -118,6 +119,16 @@ instead of breaking the build. Two flags force a refresh:
 ```sh
 cargo run -- generate --refresh-live   # re-fetch ongoing series only
 cargo run -- generate --refresh-all    # re-fetch everything
+```
+
+A fully-cached catalog builds offline, so committing each entry's payload under
+`cache/` lets a CI build publish without a credential. `tordo check-cache` lists
+entries whose payload is not committed (e.g. one added by a web commit); it is
+advisory by default and exits non-zero with `--strict`, to gate a build:
+
+```sh
+cargo run -- check-cache            # advisory: list uncached entries
+cargo run -- check-cache --strict   # non-zero exit if any are uncached
 ```
 
 ## Configuration

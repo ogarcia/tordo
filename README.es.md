@@ -31,9 +31,9 @@ servidor.
 
 ## Construir
 
-`tordo` tiene tres comandos: `generate` (construir el sitio, el que se usa por
-defecto si no indicas ninguno), `import` y `merge` (ver más abajo). `cargo run`
-equivale a `cargo run -- generate`:
+`tordo` tiene cuatro comandos: `generate` (construir el sitio, el que se usa por
+defecto si no indicas ninguno), `import`, `merge` y `check-cache` (ver más
+abajo). `cargo run` equivale a `cargo run -- generate`:
 
 ```sh
 export TMDB_READ_TOKEN=...   # token de lectura v4 de TMDB (o TMDB_API_KEY)
@@ -127,6 +127,17 @@ romper el build. Dos flags fuerzan un refresco:
 ```sh
 cargo run -- generate --refresh-live   # re-obtener solo series en emisión
 cargo run -- generate --refresh-all    # re-obtener todo
+```
+
+Un catálogo totalmente cacheado se construye sin red, así que commitear el
+payload de cada entrada en `cache/` permite que un build de CI publique sin
+credencial. `tordo check-cache` lista las entradas cuyo payload no está
+commiteado (p. ej. una añadida por un commit vía web); por defecto es informativo
+y con `--strict` termina con código distinto de cero, para condicionar un build:
+
+```sh
+cargo run -- check-cache            # informativo: lista entradas sin caché
+cargo run -- check-cache --strict   # código ≠ 0 si falta alguna
 ```
 
 ## Configuración

@@ -42,6 +42,16 @@ enum Command {
     Import(import::ImportArgs),
     /// Merge one content directory into another (by link hash).
     Merge(import::MergeArgs),
+    /// Report content entries whose TMDB payload is not committed under cache/.
+    ///
+    /// A fully-cached catalog builds offline; an entry added without its payload
+    /// (e.g. a web commit) forces `generate` to reach TMDB. This lists those so
+    /// they can be backfilled. Exits 0 by default (advisory); `--strict` exits
+    /// non-zero when any are missing, for use as a build gate.
+    CheckCache {
+        #[arg(long)]
+        strict: bool,
+    },
 }
 
 fn main() -> Result<()> {
@@ -50,6 +60,7 @@ fn main() -> Result<()> {
         Some(Command::Generate { refresh_all, refresh_live }) => generate(refresh_all, refresh_live),
         Some(Command::Import(args)) => import::run(args),
         Some(Command::Merge(args)) => import::run_merge(args),
+        Some(Command::CheckCache { strict }) => check_cache(strict),
     }
 }
 
@@ -931,6 +942,49 @@ fn copy_dir(src: &Path, dst: &Path) -> Result<()> {
 // ---------------------------------------------------------------------------
 // Main
 // ---------------------------------------------------------------------------
+
+/// List content entries whose TMDB payload is not committed under `cache/`.
+/// With `strict`, a missing payload is a hard error (build gate); otherwise it
+/// is advisory and exits cleanly.
+fn check_cache(strict: bool) -> Result<()> {
+    let catalog = std::env::var("CATALOG_DIR").unwrap_or_else(|_| ".".to_string());
+    let catalog = Path::new(&catalog);
+    let content_dir = catalog.join(CONTENT_DIR);
+
+    let entries = collect_toml(&content_dir);
+    let mut missing: Vec<(String, std::path::PathBuf)> = Vec::new();
+    for path in &entries {
+        let raw: RawFicha = toml::from_str(&fs::read_to_string(path)?)
+            .with_context(|| format!("parsing {}", path.display()))?;
+        let rel = Path::new(CACHE_DIR)
+            .join(import::subdir(&raw.media_type))
+            .join(format!("{}-{}.json", raw.media_type, raw.id));
+        if !catalog.join(&rel).exists() {
+            let slug = path.file_stem().unwrap().to_string_lossy().into_owned();
+            missing.push((slug, rel));
+        }
+    }
+
+    if missing.is_empty() {
+        println!("All {} content entries have a committed TMDB payload.", entries.len());
+        return Ok(());
+    }
+
+    eprintln!(
+        "{} of {} content entries have no committed TMDB payload:",
+        missing.len(),
+        entries.len()
+    );
+    for (slug, rel) in &missing {
+        eprintln!("  {slug}: missing {}", rel.display());
+    }
+    eprintln!("Generate the catalog with a TMDB credential and commit cache/ to backfill.");
+
+    if strict {
+        anyhow::bail!("{} content entries lack a committed TMDB payload", missing.len());
+    }
+    Ok(())
+}
 
 fn generate(refresh_all: bool, refresh_live: bool) -> Result<()> {
     // The catalog — its config.toml, content/ and cache/ — can live in a
