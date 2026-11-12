@@ -27,7 +27,8 @@ static files: open `dist/index.html` in your browser. Search, sorting and
 filtering by genre, tag or quality run client-side, so nothing needs a server.
 TMDB genres become navigable tag chips automatically and each release's
 resolution becomes a quality facet; an entry can add its own editorial `tags` on
-top. Values within a facet combine with OR, facets with AND.
+top. Tags combine with AND and quality values with OR; facets always AND
+together.
 
 ## Build
 

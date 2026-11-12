@@ -30,8 +30,8 @@ búsqueda, la ordenación y el filtrado por género, etiqueta o calidad se ejecu
 en el navegador, así que nada necesita un servidor. Los géneros de TMDB se
 convierten en chips de etiqueta navegables de forma automática y la resolución de
 cada release en una faceta de calidad; cada ficha puede añadir sus propias `tags`
-editoriales encima. Los valores de una misma faceta se combinan con OR, y las
-facetas entre sí con AND.
+editoriales encima. Las etiquetas/géneros se combinan con AND y las calidades con
+OR; las facetas entre sí siempre con AND.
 
 ## Construir
 

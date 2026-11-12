@@ -122,7 +122,9 @@
       });
       sorted.forEach((c) => list.appendChild(c));
 
-      // Group the active values by facet for OR-within / AND-across matching.
+      // Group the active values by facet. Genres/tags combine with AND (every
+      // selected tag must be present); other facets (quality) with OR (any of
+      // the selected values). Facets always AND together.
       const byFacet = new Map();
       for (const k of active) {
         const sep = k.indexOf("\u0000");
@@ -137,8 +139,12 @@
         if (type !== "all" && c.dataset.type !== type) return false;
         if (q && !norm(c.dataset.title).includes(q)) return false;
         const facets = cardFacets.get(c);
-        for (const keys of byFacet.values()) {
-          if (!keys.some((k) => facets.has(k))) return false;
+        for (const [facet, keys] of byFacet) {
+          const hit =
+            facet === "tag"
+              ? keys.every((k) => facets.has(k))
+              : keys.some((k) => facets.has(k));
+          if (!hit) return false;
         }
         return true;
       });
