@@ -24,7 +24,10 @@ note = "Sample note. Is a _Markdown_ note."
 # OPTIONAL. Technical fields are normalized for display, so you may type them
 # loosely (4k → 4K, H265 → x265, DoVi → DV, DD+ → EAC3…).
 [[releases]]
-season      = 1                      # only for series; omit it for films
+season      = 1                      # series only (omit for films). The real
+                                     # season number: the first season is 1, not
+                                     # 0. Season 0 is the specials bucket and is
+                                     # shown as "Specials".
 header      = "Versión del director" # optional human label (shown by the badges)
 note        = "Incluye pista comentada." # optional, rendered as Markdown
 source      = "WEB-DL"               # WEB-DL, WEBRip, BluRay, BDRemux, BDRip, HDTV, DVDRip

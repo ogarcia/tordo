@@ -29,10 +29,10 @@
   <section class="releases">
   {% for r in f.releases %}
     <div class="release">
-      {% if r.season or r.header or r.date %}
+      {% if r.season or r.season_special or r.header or r.date %}
       <div class="release-top">
-        {% if r.season or r.header %}
-        <h2 class="release-header">{% if r.season %}<span class="season">{{ t.season }} {{ r.season }}</span>{% if r.header %} · {% endif %}{% endif %}{{ r.header }}</h2>
+        {% if r.season or r.season_special or r.header %}
+        <h2 class="release-header">{% if r.season or r.season_special %}<span class="season">{% if r.season_special %}{{ t.season_special }}{% else %}{{ t.season }} {{ r.season }}{% endif %}</span>{% if r.header %} · {% endif %}{% endif %}{{ r.header }}</h2>
         {% else %}<span></span>{% endif %}
         {% if r.date %}<span class="release-date">{{ r.date }}</span>{% endif %}
       </div>

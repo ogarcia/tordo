@@ -202,7 +202,12 @@ struct Lang {
 
 #[derive(Serialize)]
 struct ReleaseView {
+    /// Numbered season (>= 1); `None` for films, seasonless entries and
+    /// specials (season 0, flagged by `season_special` instead).
     season: Option<i64>,
+    /// True when the release is season 0, shown as "Specials" rather than a
+    /// number. Season 0 would otherwise be a falsy integer the template drops.
+    season_special: bool,
     header: String,
     note_html: String,
     badges: Vec<Badge>,
@@ -875,8 +880,16 @@ fn release_view(r: RawRelease) -> ReleaseView {
         badges.push(norm_container(c));
     }
 
+    // Season 0 is TMDB/Kodi's "Specials" bucket: surface it as a flag, since a
+    // literal 0 is falsy in the template and would silently vanish.
+    let (season, season_special) = match r.season {
+        Some(0) => (None, true),
+        other => (other, false),
+    };
+
     ReleaseView {
-        season: r.season,
+        season,
+        season_special,
         header: r.header.unwrap_or_default(),
         note_html: r.note.as_deref().map(md).unwrap_or_default(),
         badges,
@@ -1075,7 +1088,8 @@ fn generate(refresh_all: bool, refresh_live: bool) -> Result<()> {
         let mut seasons = std::collections::BTreeSet::new();
         let mut resolutions: Vec<String> = Vec::new();
         for r in &raw.releases {
-            if let Some(s) = r.season {
+            // Count numbered seasons only; season 0 is the specials bucket.
+            if let Some(s) = r.season.filter(|s| *s > 0) {
                 seasons.insert(s);
             }
             if let Some(res) = nonempty(&r.resolution) {
