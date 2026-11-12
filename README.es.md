@@ -26,10 +26,12 @@ vale plano o cualquier otra disposición.
 Al construir, el generador obtiene los datos de TMDB (cacheados en `cache/`) y
 renderiza la portada más una página de detalle por entrada en `dist/`. El
 resultado son ficheros estáticos: abre `dist/index.html` en tu navegador. La
-búsqueda, la ordenación y el filtrado por género o etiqueta se ejecutan en el
-navegador, así que nada necesita un servidor. Los géneros de TMDB se convierten
-en chips de etiqueta navegables de forma automática; cada ficha puede añadir sus
-propias `tags` editoriales encima.
+búsqueda, la ordenación y el filtrado por género, etiqueta o calidad se ejecutan
+en el navegador, así que nada necesita un servidor. Los géneros de TMDB se
+convierten en chips de etiqueta navegables de forma automática y la resolución de
+cada release en una faceta de calidad; cada ficha puede añadir sus propias `tags`
+editoriales encima. Los valores de una misma faceta se combinan con OR, y las
+facetas entre sí con AND.
 
 ## Construir
 

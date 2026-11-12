@@ -24,9 +24,10 @@ other arrangement works.
 At build time the generator fetches TMDB data (cached under `cache/`) and renders
 the home page plus one detail page per entry into `dist/`. The result is plain
 static files: open `dist/index.html` in your browser. Search, sorting and
-filtering by genre or tag run client-side, so nothing needs a server. TMDB
-genres become navigable tag chips automatically; an entry can add its own
-editorial `tags` on top.
+filtering by genre, tag or quality run client-side, so nothing needs a server.
+TMDB genres become navigable tag chips automatically and each release's
+resolution becomes a quality facet; an entry can add its own editorial `tags` on
+top. Values within a facet combine with OR, facets with AND.
 
 ## Build
 

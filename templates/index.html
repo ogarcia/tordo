@@ -22,9 +22,9 @@
   </div>
 </div>
 
-<div id="tagbar" class="tagbar" hidden>
-  <span class="ctl-label">{{ t.tags_label }}</span>
-  <span id="tagchips" class="tagchips"></span>
+<div id="facetbar" class="facetbar" hidden>
+  <div class="facet-group"><span class="ctl-label">{{ t.tags_label }}</span><span id="tagchips" class="tagchips"></span></div>
+  <div class="facet-group"><span class="ctl-label">{{ t.quality_label }}</span><span id="reschips" class="tagchips"></span></div>
 </div>
 
 <p id="no-results" class="no-results" hidden>{{ t.no_results }}</p>
@@ -51,13 +51,13 @@
           {% if c.season_count %}
             <span class="chip">{{ c.season_count }} {% if c.season_count == 1 %}{{ t.season_one }}{% else %}{{ t.season_many }}{% endif %}</span>
           {% endif %}
-          {% for q in c.resolutions %}<span class="chip">{{ q }}</span>{% endfor %}
+          {% for q in c.resolutions %}<span class="chip chip-res" data-facet="res" data-val="{{ q }}">{{ q }}</span>{% endfor %}
         </div>
         {% endif %}
         {% if c.overview %}<p class="card-overview">{{ c.overview }}</p>{% endif %}
         {% if c.tags %}
         <div class="card-tags">
-          {% for tag in c.tags %}<span class="tag" data-tag="{{ tag }}">{{ tag }}</span>{% endfor %}
+          {% for tag in c.tags %}<span class="tag" data-facet="tag" data-val="{{ tag }}">{{ tag }}</span>{% endfor %}
         </div>
         {% endif %}
       </div>

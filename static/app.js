@@ -18,46 +18,87 @@
     const PAGE = 60;
     let shown = PAGE;
 
-    // --- Tags: navigate the catalog by clicking a tag chip (on a card or in
-    //     the tag bar). Active tags combine with AND; the text and type filters
-    //     still apply on top. ---
-    const active = new Set();
-    const cardTags = new Map();
+    // --- Facets: navigate by clicking a chip (on a card or in the facet bar).
+    //     Each chip is a facet value ("tag" genres/labels, "res" quality).
+    //     Within a facet the active values combine with OR (broaden); facets
+    //     combine with AND (narrow); the text and type filters apply on top. ---
+    const fkey = (facet, val) => facet + "\u0000" + val;
+    const active = new Set(); // "facet\u0000val" keys currently selected
+    const cardFacets = new Map();
     cards.forEach((c) =>
-      cardTags.set(
+      cardFacets.set(
         c,
-        new Set(Array.from(c.querySelectorAll(".tag")).map((t) => t.dataset.tag))
+        new Set(
+          Array.from(c.querySelectorAll("[data-facet]")).map((e) =>
+            fkey(e.dataset.facet, e.dataset.val)
+          )
+        )
       )
     );
 
-    // Build the tag bar from the union of every card's tags, sorted.
-    const tagbar = document.getElementById("tagbar");
-    const tagchips = document.getElementById("tagchips");
-    if (tagbar && tagchips) {
-      const all = Array.from(
-        new Set([].concat(...cards.map((c) => Array.from(cardTags.get(c)))))
-      ).sort((a, b) => a.localeCompare(b));
-      all.forEach((tag) => {
+    // Quality sorts best-first; unknown values fall to the end, then A–Z.
+    const RES_RANK = { "4K": 0, "1080p": 1, "720p": 2 };
+    const cmpFor = (facet) =>
+      facet === "res"
+        ? (a, b) =>
+            (RES_RANK[a] ?? 9) - (RES_RANK[b] ?? 9) || a.localeCompare(b)
+        : (a, b) => a.localeCompare(b);
+
+    // Fill a bar group with a button per distinct value of a facet; returns
+    // whether any value existed (so empty groups can hide).
+    function buildGroup(facet, container, chipClass) {
+      if (!container) return false;
+      const vals = Array.from(
+        new Set(
+          [].concat(
+            ...cards.map((c) =>
+              Array.from(
+                c.querySelectorAll('[data-facet="' + facet + '"]')
+              ).map((e) => e.dataset.val)
+            )
+          )
+        )
+      ).sort(cmpFor(facet));
+      vals.forEach((val) => {
         const b = document.createElement("button");
         b.type = "button";
-        b.className = "tag";
-        b.dataset.tag = tag;
-        b.textContent = tag;
-        tagchips.appendChild(b);
+        b.className = chipClass;
+        b.dataset.facet = facet;
+        b.dataset.val = val;
+        b.textContent = val;
+        container.appendChild(b);
       });
-      tagbar.hidden = all.length === 0;
+      return vals.length > 0;
     }
 
-    function syncTagState() {
+    const facetbar = document.getElementById("facetbar");
+    const hasTags = buildGroup("tag", document.getElementById("tagchips"), "tag");
+    const hasRes = buildGroup(
+      "res",
+      document.getElementById("reschips"),
+      "chip chip-res"
+    );
+    document.querySelectorAll(".facet-group").forEach((g) => {
+      g.hidden = !g.querySelector("[data-facet]");
+    });
+    if (facetbar) facetbar.hidden = !(hasTags || hasRes);
+
+    function syncFacetState() {
       document
-        .querySelectorAll(".tag")
-        .forEach((el) => el.classList.toggle("active", active.has(el.dataset.tag)));
+        .querySelectorAll("[data-facet]")
+        .forEach((el) =>
+          el.classList.toggle(
+            "active",
+            active.has(fkey(el.dataset.facet, el.dataset.val))
+          )
+        );
     }
 
-    function toggleTag(tag) {
-      if (active.has(tag)) active.delete(tag);
-      else active.add(tag);
-      syncTagState();
+    function toggleFacet(facet, val) {
+      const k = fkey(facet, val);
+      if (active.has(k)) active.delete(k);
+      else active.add(k);
+      syncFacetState();
       apply(true);
     }
 
@@ -81,13 +122,23 @@
       });
       sorted.forEach((c) => list.appendChild(c));
 
+      // Group the active values by facet for OR-within / AND-across matching.
+      const byFacet = new Map();
+      for (const k of active) {
+        const sep = k.indexOf("\u0000");
+        const facet = k.slice(0, sep);
+        if (!byFacet.has(facet)) byFacet.set(facet, []);
+        byFacet.get(facet).push(k);
+      }
+
       const q = norm(search.value.trim());
       const type = typeSel.value;
       const matched = sorted.filter((c) => {
         if (type !== "all" && c.dataset.type !== type) return false;
         if (q && !norm(c.dataset.title).includes(q)) return false;
-        for (const tag of active) {
-          if (!cardTags.get(c).has(tag)) return false;
+        const facets = cardFacets.get(c);
+        for (const keys of byFacet.values()) {
+          if (!keys.some((k) => facets.has(k))) return false;
         }
         return true;
       });
@@ -99,14 +150,14 @@
       if (moreBtn) moreBtn.hidden = matched.length <= shown;
     }
 
-    // A click on any tag chip (card or bar) drives the filter instead of
+    // A click on any facet chip (card or bar) drives the filter instead of
     // following the card link.
     document.addEventListener("click", (e) => {
-      const chip = e.target.closest(".tag");
+      const chip = e.target.closest("[data-facet]");
       if (!chip) return;
       e.preventDefault();
       e.stopPropagation();
-      toggleTag(chip.dataset.tag);
+      toggleFacet(chip.dataset.facet, chip.dataset.val);
     });
 
     [search, sort, order, typeSel].forEach((el) =>

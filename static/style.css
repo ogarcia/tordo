@@ -220,16 +220,23 @@ main { max-width: 1100px; margin: 0 auto; padding: 20px; }
 }
 .card-overview { margin: 8px 0 0; color: var(--muted); font-size: 14px; }
 
-/* Navigable tags: card footer chips + the filter bar above the listing. */
+/* Navigable facets: card chips (genre/tag + resolution) and the filter bar
+   above the listing, grouped by facet (tags, quality). */
 .card-tags { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 0; }
-.tagbar {
+.facetbar {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: -8px 0 20px;
+}
+.facetbar[hidden] { display: none; }
+.facet-group {
   display: flex;
   align-items: baseline;
   flex-wrap: wrap;
   gap: 8px 10px;
-  margin: -8px 0 20px;
 }
-.tagbar[hidden] { display: none; }
+.facet-group[hidden] { display: none; }
 .tagchips { display: flex; flex-wrap: wrap; gap: 6px; }
 .tag {
   font: inherit;
@@ -244,6 +251,15 @@ main { max-width: 1100px; margin: 0 auto; padding: 20px; }
 }
 .tag:hover { border-color: var(--accent); color: var(--accent); }
 .tag.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-contrast);
+}
+/* Resolution chips double as a quality facet: same pill, now clickable. */
+button.chip-res { font: inherit; line-height: 1.45; }
+.chip-res { cursor: pointer; border: 1px solid transparent; }
+.chip-res:hover { color: var(--accent); }
+.chip-res.active {
   background: var(--accent);
   border-color: var(--accent);
   color: var(--accent-contrast);
