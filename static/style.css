@@ -219,6 +219,35 @@ main { max-width: 1100px; margin: 0 auto; padding: 20px; }
   color: var(--muted);
 }
 .card-overview { margin: 8px 0 0; color: var(--muted); font-size: 14px; }
+
+/* Navigable tags: card footer chips + the filter bar above the listing. */
+.card-tags { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 0; }
+.tagbar {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 8px 10px;
+  margin: -8px 0 20px;
+}
+.tagbar[hidden] { display: none; }
+.tagchips { display: flex; flex-wrap: wrap; gap: 6px; }
+.tag {
+  font: inherit;
+  font-size: 12px;
+  line-height: 1.45;
+  padding: 2px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--panel);
+  color: var(--muted);
+  cursor: pointer;
+}
+.tag:hover { border-color: var(--accent); color: var(--accent); }
+.tag.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-contrast);
+}
 .no-results { color: var(--muted); text-align: center; padding: 40px; }
 .more-btn { display: block; margin: 20px auto 0; }
 .more-btn[hidden] { display: none; }

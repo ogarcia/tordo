@@ -19,6 +19,11 @@ id   = 1396        # TMDB id; title, year, poster and synopsis come from here
 # Optional free note for the whole entry (rendered as Markdown).
 note = "Sample note. Is a _Markdown_ note."
 
+# Optional editorial tags. They appear as clickable chips on the home page,
+# merged with the TMDB genres (which are added automatically), and let visitors
+# filter the catalog. De-duplicated against the genres, case-insensitively.
+tags = ["Imprescindibles"]
+
 # Each [[releases]] is one set of links; repeat it as many times as you need.
 # Their display order is the order you write them. Everything except `links` is
 # OPTIONAL. Technical fields are normalized for display, so you may type them

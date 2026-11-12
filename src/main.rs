@@ -112,6 +112,10 @@ struct RawFicha {
     id: u64,
     #[serde(default)]
     note: Option<String>,
+    /// Editorial tags for this entry (e.g. "Navidad", "Imprescindibles"). Shown
+    /// as navigable chips on the home page, merged with the TMDB genres.
+    #[serde(default)]
+    tags: Vec<String>,
     #[serde(default)]
     releases: Vec<RawRelease>,
 }
@@ -187,6 +191,8 @@ struct Card {
     season_count: usize,
     /// Distinct resolutions offered across releases.
     resolutions: Vec<String>,
+    /// Navigable tags: the entry's manual tags plus the TMDB genres.
+    tags: Vec<String>,
     has_highlights: bool,
 }
 
@@ -1114,6 +1120,18 @@ fn generate(refresh_all: bool, refresh_live: bool) -> Result<()> {
         let releases = raw.releases.into_iter().map(release_view).collect();
         let note_html = raw.note.as_deref().map(md).unwrap_or_default();
 
+        // Navigable tags: the entry's own manual tags first, then the TMDB
+        // genres, de-duplicated case-insensitively so a manual "Drama" and the
+        // genre "Drama" collapse into a single chip.
+        let mut tags: Vec<String> = Vec::new();
+        let mut seen = std::collections::HashSet::new();
+        for tag in raw.tags.iter().chain(det.genres.iter()) {
+            let tag = tag.trim();
+            if !tag.is_empty() && seen.insert(tag.to_lowercase()) {
+                tags.push(tag.to_string());
+            }
+        }
+
         let card = Card {
             slug: slug.clone(),
             media_type: raw.media_type.clone(),
@@ -1125,6 +1143,7 @@ fn generate(refresh_all: bool, refresh_live: bool) -> Result<()> {
             season_count,
             has_highlights: season_count > 0 || !resolutions.is_empty(),
             resolutions,
+            tags,
         };
         let ficha = FichaView {
             slug,

@@ -18,6 +18,49 @@
     const PAGE = 60;
     let shown = PAGE;
 
+    // --- Tags: navigate the catalog by clicking a tag chip (on a card or in
+    //     the tag bar). Active tags combine with AND; the text and type filters
+    //     still apply on top. ---
+    const active = new Set();
+    const cardTags = new Map();
+    cards.forEach((c) =>
+      cardTags.set(
+        c,
+        new Set(Array.from(c.querySelectorAll(".tag")).map((t) => t.dataset.tag))
+      )
+    );
+
+    // Build the tag bar from the union of every card's tags, sorted.
+    const tagbar = document.getElementById("tagbar");
+    const tagchips = document.getElementById("tagchips");
+    if (tagbar && tagchips) {
+      const all = Array.from(
+        new Set([].concat(...cards.map((c) => Array.from(cardTags.get(c)))))
+      ).sort((a, b) => a.localeCompare(b));
+      all.forEach((tag) => {
+        const b = document.createElement("button");
+        b.type = "button";
+        b.className = "tag";
+        b.dataset.tag = tag;
+        b.textContent = tag;
+        tagchips.appendChild(b);
+      });
+      tagbar.hidden = all.length === 0;
+    }
+
+    function syncTagState() {
+      document
+        .querySelectorAll(".tag")
+        .forEach((el) => el.classList.toggle("active", active.has(el.dataset.tag)));
+    }
+
+    function toggleTag(tag) {
+      if (active.has(tag)) active.delete(tag);
+      else active.add(tag);
+      syncTagState();
+      apply(true);
+    }
+
     function apply(resetPage) {
       if (resetPage) shown = PAGE;
 
@@ -40,11 +83,14 @@
 
       const q = norm(search.value.trim());
       const type = typeSel.value;
-      const matched = sorted.filter(
-        (c) =>
-          (type === "all" || c.dataset.type === type) &&
-          (!q || norm(c.dataset.title).includes(q))
-      );
+      const matched = sorted.filter((c) => {
+        if (type !== "all" && c.dataset.type !== type) return false;
+        if (q && !norm(c.dataset.title).includes(q)) return false;
+        for (const tag of active) {
+          if (!cardTags.get(c).has(tag)) return false;
+        }
+        return true;
+      });
 
       cards.forEach((c) => (c.hidden = true));
       matched.slice(0, shown).forEach((c) => (c.hidden = false));
@@ -52,6 +98,16 @@
       noResults.hidden = matched.length !== 0;
       if (moreBtn) moreBtn.hidden = matched.length <= shown;
     }
+
+    // A click on any tag chip (card or bar) drives the filter instead of
+    // following the card link.
+    document.addEventListener("click", (e) => {
+      const chip = e.target.closest(".tag");
+      if (!chip) return;
+      e.preventDefault();
+      e.stopPropagation();
+      toggleTag(chip.dataset.tag);
+    });
 
     [search, sort, order, typeSel].forEach((el) =>
       el.addEventListener("input", () => apply(true))

@@ -22,6 +22,11 @@
   </div>
 </div>
 
+<div id="tagbar" class="tagbar" hidden>
+  <span class="ctl-label">{{ t.tags_label }}</span>
+  <span id="tagchips" class="tagchips"></span>
+</div>
+
 <p id="no-results" class="no-results" hidden>{{ t.no_results }}</p>
 
 <ul id="cards" class="cards">
@@ -50,6 +55,11 @@
         </div>
         {% endif %}
         {% if c.overview %}<p class="card-overview">{{ c.overview }}</p>{% endif %}
+        {% if c.tags %}
+        <div class="card-tags">
+          {% for tag in c.tags %}<span class="tag" data-tag="{{ tag }}">{{ tag }}</span>{% endfor %}
+        </div>
+        {% endif %}
       </div>
     </a>
   </li>
