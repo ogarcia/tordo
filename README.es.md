@@ -35,9 +35,9 @@ OR; las facetas entre sí siempre con AND.
 
 ## Construir
 
-`tordo` tiene cuatro comandos: `generate` (construir el sitio, el que se usa por
-defecto si no indicas ninguno), `import`, `merge` y `check-cache` (ver más
-abajo). `cargo run` equivale a `cargo run -- generate`:
+`tordo` tiene cinco comandos: `generate` (construir el sitio, el que se usa por
+defecto si no indicas ninguno), `import`, `extract`, `merge` y `check-cache` (ver
+más abajo). `cargo run` equivale a `cargo run -- generate`:
 
 ```sh
 export TMDB_READ_TOKEN=...   # token de lectura v4 de TMDB (o TMDB_API_KEY)
@@ -80,22 +80,35 @@ Sin `--db`, se usa la propia base de datos del daemon de Rucio. Flags útiles:
 escribe), `--auto` (salta las coincidencias dudosas), `--limit N`; `tordo import
 --help` los lista todos.
 
-Sin credencial de TMDB aún puedes extraer los enlaces sin conexión con
-`--export enlaces.json`: agrupa la base de datos en obras y escribe sus enlaces y
-detalles de release en un fichero, sin TMDB. Quien sí tenga credencial termina
-la importación desde ese fichero con `--from-works enlaces.json` en vez de una
-base de datos. Los enlaces que ya están en el catálogo de destino se omiten, así
-que reimportar es seguro.
+### Hand-off sin credencial de TMDB
+
+`tordo extract enlaces.json` agrupa la base de datos en obras y escribe sus
+enlaces y detalles de release en un fichero compacto, **sin conexión ni TMDB**.
+Quien sí tenga credencial lo resuelve en fichas con `tordo import
+--from-links-file enlaces.json` (mutuamente excluyente con `--db`). Los enlaces
+que ya están en el catálogo de destino se omiten, así que reimportar es seguro.
+
+### Hand-off como fichas resueltas
+
+`tordo import --to-file paquete.json` resuelve contra TMDB pero escribe todas las
+fichas en un único fichero compacto en vez de en el directorio de contenido. Se
+lo pasas a quien mantiene el catálogo, que lo incorpora con `merge` (abajo), sin
+necesidad de compartir el catálogo. Ambos ficheros son JSON minificado, fáciles
+de distribuir.
 
 ## Fusionar contenido
 
-`tordo merge <BASE> <OTRO>` fusiona un segundo directorio de contenido sobre el
-primero, cotejando por hash de enlace: cada entrada de `OTRO` se añade a `BASE`, y
-para las entradas que ya existen ahí solo se incorporan los enlaces **nuevos** —
-no se sobrescribe nada. Usa `--dry-run` para previsualizar los cambios.
+`tordo merge <BASE> <OTRO>` incorpora entradas en `BASE` cotejando por hash de
+enlace: cada entrada de `OTRO` se añade, y para las que ya existen solo se
+incorporan los enlaces **nuevos** — no se sobrescribe nada. `OTRO` puede ser un
+**directorio de contenido o un fichero de paquete** de `import --to-file`. `BASE`
+puede estar vacío o no existir (se crea), así que un paquete puede arrancar un
+catálogo desde cero. Usa `--dry-run` para previsualizar los cambios.
 
 ```sh
-cargo run -- merge content ../otro-catalogo/content
+cargo run -- merge content ../otro-catalogo/content   # otro directorio
+cargo run -- merge content paquete.json               # un paquete recibido
+cargo run -- merge catalogo-nuevo paquete.json        # arrancar desde un paquete
 ```
 
 ## Contenedor

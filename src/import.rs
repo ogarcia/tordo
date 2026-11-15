@@ -93,14 +93,20 @@ pub struct ImportArgs {
     #[arg(long)]
     pub plan: bool,
 
-    /// Offline: extract the parsed works (links + release details) to PATH as
-    /// JSON, no TMDB. Hand the file to someone who runs --from-works.
-    #[arg(long, value_name = "PATH")]
+    /// Internal: set by the `extract` verb to write a links file instead of
+    /// resolving against TMDB. Not a CLI flag.
+    #[arg(skip)]
     pub export: Option<String>,
 
-    /// Import from a works file written by --export instead of a Rucio DB.
+    /// Import from a links file written by `tordo extract`, instead of a DB.
+    /// Mutually exclusive with --db (the links file is the source).
+    #[arg(long, value_name = "PATH", conflicts_with = "db")]
+    pub from_links_file: Option<String>,
+
+    /// Write the resolved fichas to one portable bundle file at PATH (instead of
+    /// the content directory). Hand it to a maintainer to fold in with `merge`.
     #[arg(long, value_name = "PATH")]
-    pub from_works: Option<String>,
+    pub to_file: Option<String>,
 
     /// Query TMDB and build the report, but write no .toml files.
     #[arg(long)]
@@ -117,6 +123,65 @@ pub struct ImportArgs {
     /// Format of --report: txt (human) or json. Only used with --report.
     #[arg(long, value_enum, default_value = "txt")]
     pub report_format: ReportFormat,
+}
+
+#[derive(Args)]
+pub struct ExtractArgs {
+    /// Output links file to write (minified JSON).
+    pub out: String,
+
+    /// Rucio database (default: ask; same resolution as `import`).
+    #[arg(long)]
+    pub db: Option<String>,
+
+    /// Catalog content directory to deduplicate against (default: ask).
+    #[arg(long)]
+    pub content: Option<String>,
+
+    /// Treat DIR as a series library (repeatable).
+    #[arg(long, value_name = "DIR")]
+    pub series: Vec<String>,
+
+    /// Treat DIR as a films library (repeatable).
+    #[arg(long, value_name = "DIR")]
+    pub movies: Vec<String>,
+
+    /// Treat DIR as a mixed/downloads folder (repeatable).
+    #[arg(long, value_name = "DIR")]
+    pub mixed: Vec<String>,
+
+    /// Per-release date: the file's share time (default) or today.
+    #[arg(long, value_enum, default_value = "added")]
+    pub date: DateMode,
+
+    /// Process at most N works (0 = all).
+    #[arg(long, default_value_t = 0)]
+    pub limit: usize,
+}
+
+/// `extract`: group a Rucio DB into works and write a links file (offline, no
+/// TMDB). Reuses the import pipeline via its internal `export` path.
+pub fn run_extract(args: ExtractArgs) -> Result<()> {
+    run(ImportArgs {
+        db: args.db,
+        content: args.content,
+        tmdb_key: None,
+        tmdb_token: None,
+        lang: "es-ES".to_string(),
+        series: args.series,
+        movies: args.movies,
+        mixed: args.mixed,
+        date: args.date,
+        auto: false,
+        plan: false,
+        export: Some(args.out),
+        from_links_file: None,
+        to_file: None,
+        dry_run: false,
+        limit: args.limit,
+        report: None,
+        report_format: ReportFormat::Txt,
+    })
 }
 
 // --------------------------------------------------------------------------- //
@@ -570,20 +635,130 @@ impl Work {
 /// resolution. Lets a contributor without a TMDB credential extract links from a
 /// Rucio DB and pass them to someone who finishes the import.
 const WORKS_FORMAT_VERSION: u32 = 1;
+const WORKS_FILE_KIND: &str = "tordo-links";
+const BUNDLE_FILE_KIND: &str = "tordo-bundle";
+const BUNDLE_FORMAT_VERSION: u32 = 1;
 
 #[derive(Serialize, Deserialize)]
 struct WorksFile {
+    #[serde(default)]
+    kind: String,
     version: u32,
     works: Vec<Work>,
+}
+
+/// Write a links file (`extract`): the grouped works as one minified JSON file,
+/// compact and easy to hand off. Returns (works, links).
+fn write_works_file(path: &str, works: Vec<Work>) -> Result<(usize, usize)> {
+    let doc = WorksFile { kind: WORKS_FILE_KIND.into(), version: WORKS_FORMAT_VERSION, works };
+    fs::write(path, serde_json::to_string(&doc)?)?;
+    let links: usize = doc.works.iter().map(|w| w.files.len()).sum();
+    Ok((doc.works.len(), links))
+}
+
+/// On-disk envelope for a portable ficha bundle (`import --to-file` / `merge`):
+/// the content fichas as verbatim TOML text, so every field round-trips. Just
+/// minified JSON — no extra dependencies.
+#[derive(Serialize, Deserialize)]
+struct BundleFile {
+    #[serde(default)]
+    kind: String,
+    version: u32,
+    fichas: Vec<BundleFicha>,
+}
+
+#[derive(Serialize, Deserialize)]
+struct BundleFicha {
+    /// Path relative to the content root, e.g. "tv/tv-1396.toml".
+    path: String,
+    content: String,
+}
+
+/// Pack every `*.toml` ficha under `content_dir` into one minified JSON bundle.
+fn write_bundle(content_dir: &Path, out: &str) -> Result<usize> {
+    let mut fichas: Vec<BundleFicha> = Vec::new();
+    let mut stack = vec![content_dir.to_path_buf()];
+    while let Some(dir) = stack.pop() {
+        let Ok(rd) = fs::read_dir(&dir) else { continue };
+        for entry in rd.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                stack.push(path);
+                continue;
+            }
+            if path.extension().and_then(|e| e.to_str()) != Some("toml") {
+                continue;
+            }
+            let rel = path
+                .strip_prefix(content_dir)
+                .unwrap_or(&path)
+                .to_string_lossy()
+                .replace('\\', "/");
+            let content = fs::read_to_string(&path).with_context(|| format!("reading {}", path.display()))?;
+            fichas.push(BundleFicha { path: rel, content });
+        }
+    }
+    fichas.sort_by(|a, b| a.path.cmp(&b.path));
+    let doc = BundleFile { kind: BUNDLE_FILE_KIND.into(), version: BUNDLE_FORMAT_VERSION, fichas };
+    fs::write(out, serde_json::to_string(&doc)?)?;
+    Ok(doc.fichas.len())
+}
+
+/// Materialize a fichas bundle into a fresh temp directory (the caller merges
+/// from it and removes it). Guards against path traversal from an untrusted
+/// bundle, and points the user at `import --from-links-file` for a links file.
+fn unpack_bundle(file: &Path) -> Result<PathBuf> {
+    let text = fs::read_to_string(file)
+        .with_context(|| red(&format!("error: cannot read bundle file: {}", file.display())))?;
+    let kind = serde_json::from_str::<serde_json::Value>(&text)
+        .ok()
+        .and_then(|v| v.get("kind").and_then(|k| k.as_str()).map(String::from))
+        .unwrap_or_default();
+    if kind == WORKS_FILE_KIND {
+        bail!(red(&format!(
+            "error: {} is a links file, not a fichas bundle.\n       resolve it first with `tordo import --from-links-file`.",
+            file.display()
+        )));
+    }
+    let doc: BundleFile = serde_json::from_str(&text)
+        .with_context(|| red(&format!("error: not a valid fichas bundle: {}", file.display())))?;
+    if doc.version != BUNDLE_FORMAT_VERSION {
+        bail!(red(&format!(
+            "error: bundle version {} is not supported (expected {BUNDLE_FORMAT_VERSION}).",
+            doc.version
+        )));
+    }
+    let dir = std::env::temp_dir().join(format!("tordo-bundle-{}-{}", std::process::id(), now_secs()));
+    for f in &doc.fichas {
+        let rel = Path::new(&f.path);
+        if rel.is_absolute() || rel.components().any(|c| matches!(c, std::path::Component::ParentDir)) {
+            bail!(red(&format!("error: unsafe path in bundle: {}", f.path)));
+        }
+        let dest = dir.join(rel);
+        if let Some(p) = dest.parent() {
+            fs::create_dir_all(p)?;
+        }
+        fs::write(&dest, &f.content)?;
+    }
+    Ok(dir)
 }
 
 /// Load works from a `--export` file, dropping files already linked in this
 /// catalog (and works thereby left empty), so a re-import stays idempotent.
 fn load_works_file(path: &str, linked: &BTreeSet<String>) -> Result<Vec<Work>> {
     let text = fs::read_to_string(path)
-        .with_context(|| red(&format!("error: cannot read works file: {path}")))?;
+        .with_context(|| red(&format!("error: cannot read links file: {path}")))?;
+    let kind = serde_json::from_str::<serde_json::Value>(&text)
+        .ok()
+        .and_then(|v| v.get("kind").and_then(|k| k.as_str()).map(String::from))
+        .unwrap_or_default();
+    if kind == BUNDLE_FILE_KIND {
+        bail!(red(&format!(
+            "error: {path} is a fichas bundle, not a links file.\n       merge it with `tordo merge <catalog>/content {path}`."
+        )));
+    }
     let doc: WorksFile = serde_json::from_str(&text)
-        .with_context(|| red(&format!("error: not a valid works file: {path}")))?;
+        .with_context(|| red(&format!("error: not a valid links file: {path}")))?;
     if doc.version != WORKS_FORMAT_VERSION {
         bail!(red(&format!(
             "error: works file version {} is not supported (expected {WORKS_FORMAT_VERSION}).",
@@ -1149,7 +1324,9 @@ struct ReleaseOut {
     ripper: Option<String>,
     origin: Option<String>,
     audio: Vec<String>,
+    audio_desc: Vec<String>,
     subs: Vec<String>,
+    subs_sdh: Vec<String>,
     links: Vec<String>,
 }
 
@@ -1202,7 +1379,9 @@ fn build_releases(work: &Work, mode: DateMode) -> Vec<ReleaseOut> {
                 ripper: None,
                 origin: None,
                 audio: rel.audio.clone(),
+                audio_desc: Vec::new(),
                 subs: rel.subs.clone(),
+                subs_sdh: Vec::new(),
                 links: files.iter().map(|f| rucio_link(&f.hash, &f.name, f.size)).collect(),
             }
         })
@@ -1289,18 +1468,27 @@ fn render_release(r: &ReleaseOut) -> String {
     if !r.audio.is_empty() {
         out.push(format!("language.audio     = {}", toml_list(&r.audio)));
     }
+    if !r.audio_desc.is_empty() {
+        out.push(format!("language.audio_description = {}", toml_list(&r.audio_desc)));
+    }
     if !r.subs.is_empty() {
         out.push(format!("language.subtitles = {}", toml_list(&r.subs)));
+    }
+    if !r.subs_sdh.is_empty() {
+        out.push(format!("language.subtitles_sdh     = {}", toml_list(&r.subs_sdh)));
     }
     let links = r.links.iter().map(|l| format!("  {}", toml_str(l))).collect::<Vec<_>>().join(",\n");
     out.push(format!("links = [\n{links},\n]"));
     out.join("\n")
 }
 
-fn render_ficha(media_type: &str, tmdb_id: i64, releases: &[ReleaseOut], note: &Option<String>) -> String {
+fn render_ficha(media_type: &str, tmdb_id: i64, releases: &[ReleaseOut], note: &Option<String>, tags: &[String]) -> String {
     let mut head = vec![format!("type = \"{media_type}\""), format!("id   = {tmdb_id}")];
     if let Some(n) = note {
         head.push(format!("note = {}", toml_str(n)));
+    }
+    if !tags.is_empty() {
+        head.push(format!("tags = {}", toml_list(tags)));
     }
     let blocks: Vec<String> = releases.iter().map(render_release).collect();
     format!("{}\n\n{}\n", head.join("\n"), blocks.join("\n\n"))
@@ -1317,7 +1505,11 @@ struct ExLang {
     #[serde(default)]
     audio: Vec<String>,
     #[serde(default)]
+    audio_description: Vec<String>,
+    #[serde(default)]
     subtitles: Vec<String>,
+    #[serde(default)]
+    subtitles_sdh: Vec<String>,
 }
 #[derive(Deserialize)]
 struct ExRelease {
@@ -1345,6 +1537,8 @@ struct ExFicha {
     media_type: Option<String>,
     note: Option<String>,
     #[serde(default)]
+    tags: Vec<String>,
+    #[serde(default)]
     releases: Vec<ExRelease>,
 }
 
@@ -1363,7 +1557,9 @@ fn flatten_release(r: ExRelease) -> ReleaseOut {
         ripper: r.ripper,
         origin: r.origin,
         audio: r.language.audio,
+        audio_desc: r.language.audio_description,
         subs: r.language.subtitles,
+        subs_sdh: r.language.subtitles_sdh,
         links: r.links,
     }
 }
@@ -1495,7 +1691,7 @@ fn write_entry(work: &Work, tmdb_id: i64, content_dir: &Path, mode: DateMode, ex
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)?;
     }
-    fs::write(&path, render_ficha(&work.media_type, tmdb_id, &build_releases(work, mode), &None))?;
+    fs::write(&path, render_ficha(&work.media_type, tmdb_id, &build_releases(work, mode), &None, &[]))?;
     existing_paths.insert((work.media_type.clone(), tmdb_id), path);
     println!("  {} {}-{tmdb_id}  {:?} ({} files)", green("+"), work.media_type, work.title, work.files.len());
     Ok(())
@@ -1558,12 +1754,13 @@ fn merge_entry(work: &Work, tmdb_id: i64, content_dir: &Path, mode: DateMode, ex
     let data: ExFicha = toml::from_str(&fs::read_to_string(&path)?)?;
     let mtype = data.media_type.unwrap_or_else(|| work.media_type.clone());
     let note = data.note;
+    let tags = data.tags;
     let mut releases: Vec<ReleaseOut> = data.releases.into_iter().map(flatten_release).collect();
     let added = merge_into(&mut releases, build_releases(work, mode));
     if added == 0 {
         return Ok(0);
     }
-    fs::write(&path, render_ficha(&mtype, tmdb_id, &releases, &note))?;
+    fs::write(&path, render_ficha(&mtype, tmdb_id, &releases, &note, &tags))?;
     println!("  {} merge  {mtype}-{tmdb_id}  {} -> {:?}", cyan("^"), cyan(&format!("+{added} links")), work.title);
     Ok(added)
 }
@@ -1593,13 +1790,25 @@ fn parse_id(s: &str, default_type: &str) -> Option<(String, i64)> {
 }
 
 pub fn run(args: ImportArgs) -> Result<()> {
-    // Mutually exclusive inputs: --from-works reads an already-parsed file, so
-    // there is nothing for --export to extract.
-    if args.from_works.is_some() && args.export.is_some() {
-        bail!(red("error: --from-works and --export cannot be combined."));
+    // Mutually exclusive inputs: --from-links-file reads an already-parsed file,
+    // so there is nothing to extract.
+    if args.from_links_file.is_some() && args.export.is_some() {
+        bail!(red("error: --from-links-file and extract cannot be combined."));
+    }
+    if args.to_file.is_some() && (args.plan || args.dry_run) {
+        bail!(red("error: --to-file needs a real import; not compatible with --plan/--dry-run."));
     }
 
-    let content_dir = resolve_content(&args.content)?;
+    // --to-file resolves into a throwaway temp dir that is then packed into the
+    // bundle; a normal import writes straight into the catalog's content dir.
+    let tmp_root = args
+        .to_file
+        .as_ref()
+        .map(|_| std::env::temp_dir().join(format!("tordo-import-{}-{}", std::process::id(), now_secs())));
+    let content_dir = match &tmp_root {
+        Some(root) => root.join("content"),
+        None => resolve_content(&args.content)?,
+    };
     let mut existing = load_existing(&content_dir);
     println!(
         "Existing entries: {} ({} links already covered)",
@@ -1607,9 +1816,9 @@ pub fn run(args: ImportArgs) -> Result<()> {
         existing.linked.len()
     );
 
-    // Obtain the works either from a previously exported file (the offline link
-    // hand-off) or by parsing a Rucio database.
-    let mut works = if let Some(path) = &args.from_works {
+    // Obtain the works either from a links file (the offline hand-off) or by
+    // parsing a Rucio database.
+    let mut works = if let Some(path) = &args.from_links_file {
         let works = load_works_file(path, &existing.linked)?;
         let tv = works.iter().filter(|w| w.media_type == "tv").count();
         println!(
@@ -1712,19 +1921,15 @@ pub fn run(args: ImportArgs) -> Result<()> {
         return Ok(());
     }
 
-    // --export: write the parsed works (links + release details) for someone
-    // else to finish with --from-works. Offline, no TMDB.
+    // extract: write the parsed works (links + release details) for someone else
+    // to finish with --from-links-file. Offline, no TMDB.
     if let Some(path) = &args.export {
-        let doc = WorksFile { version: WORKS_FORMAT_VERSION, works };
-        fs::write(path, serde_json::to_string_pretty(&doc)?)?;
-        let links: usize = doc.works.iter().map(|w| w.files.len()).sum();
+        let (works_n, links) = write_works_file(path, works)?;
         println!(
-            "\n{}{} ({} works, {} links){}",
-            bold("Exported: "),
+            "\n{}{} ({works_n} works, {links} links){}",
+            bold("Extracted: "),
             absolute(path).display(),
-            doc.works.len(),
-            links,
-            dim(" — finish with `tordo import --from-works`.")
+            dim(" — resolve with `tordo import --from-links-file`.")
         );
         return Ok(());
     }
@@ -1809,7 +2014,14 @@ pub fn run(args: ImportArgs) -> Result<()> {
         println!("{}", dim("\n(nothing written; pass --report PATH [--report-format json] to save a detailed report)"));
     }
     if !args.dry_run {
-        println!("Review the new content/*.toml, then rebuild with `tordo generate`.");
+        if let (Some(out), Some(root)) = (&args.to_file, &tmp_root) {
+            let n = write_bundle(&content_dir, out)?;
+            let _ = fs::remove_dir_all(root);
+            println!("\n{}{} ({n} fichas)", bold("Bundle: "), absolute(out).display());
+            println!("{}", dim("Hand it to a maintainer to fold in with `tordo merge`."));
+        } else {
+            println!("Review the new content/*.toml, then rebuild with `tordo generate`.");
+        }
     }
     Ok(())
 }
@@ -2071,8 +2283,11 @@ fn write_report(path: &str, records: &[Record], works: &[Work], args: &ImportArg
 #[derive(Args)]
 pub struct MergeArgs {
     /// Base content directory; new links and entries are added here, in place.
+    /// May be empty or not exist yet (it is created), so a bundle can bootstrap a
+    /// fresh catalog.
     pub base: String,
-    /// Content directory to merge onto the base.
+    /// What to merge on top: a content directory, OR a bundle file written by
+    /// `tordo import --to-file`.
     pub other: String,
     /// Show what would change, write nothing.
     #[arg(long)]
@@ -2081,15 +2296,31 @@ pub struct MergeArgs {
 
 pub fn run_merge(args: MergeArgs) -> Result<()> {
     let base_dir = absolute(&args.base);
-    let other_dir = absolute(&args.other);
-    if !base_dir.is_dir() {
-        bail!(red(&format!("error: base content not found: {}", base_dir.display())));
+    let other_input = absolute(&args.other);
+
+    if other_input.is_file() {
+        // A portable fichas bundle: unpack to a temp dir, merge, then clean up.
+        let tmp = unpack_bundle(&other_input)?;
+        let res = merge_dirs(&base_dir, &tmp, args.dry_run);
+        let _ = fs::remove_dir_all(&tmp);
+        res
+    } else if other_input.is_dir() {
+        merge_dirs(&base_dir, &other_input, args.dry_run)
+    } else {
+        bail!(red(&format!("error: content to merge not found: {}", other_input.display())))
     }
-    if !other_dir.is_dir() {
-        bail!(red(&format!("error: content to merge not found: {}", other_dir.display())));
+}
+
+/// Fold `other_dir` (a content directory) into `base_dir` by link hash. The base
+/// may be empty or missing (created on write), so this also bootstraps a catalog.
+fn merge_dirs(base_dir: &Path, other_dir: &Path, dry_run: bool) -> Result<()> {
+    let mut base = load_existing(base_dir);
+    if !base_dir.exists() {
+        println!("{}", dim(&format!("base {} does not exist — creating it.", base_dir.display())));
+    } else if base.ids.is_empty() {
+        println!("{}", dim(&format!("base {} has no entries — merging as a fresh catalog.", base_dir.display())));
     }
-    let mut base = load_existing(&base_dir);
-    let other = load_existing(&other_dir);
+    let other = load_existing(other_dir);
 
     // Process in a stable order so output and any conflicts are reproducible.
     let mut keys: Vec<(String, i64)> = other.paths.keys().cloned().collect();
@@ -2102,6 +2333,7 @@ pub fn run_merge(args: MergeArgs) -> Result<()> {
         let data: ExFicha = toml::from_str(&fs::read_to_string(other_path)?)
             .with_context(|| format!("parsing {}", other_path.display()))?;
         let onote = data.note.clone();
+        let otags = data.tags.clone();
         let omtype = data.media_type.clone().unwrap_or_else(|| key.0.clone());
         let incoming: Vec<ReleaseOut> = data.releases.into_iter().map(flatten_release).collect();
 
@@ -2112,11 +2344,12 @@ pub fn run_merge(args: MergeArgs) -> Result<()> {
                 .with_context(|| format!("parsing {}", base_path.display()))?;
             let bmtype = bdata.media_type.unwrap_or_else(|| key.0.clone());
             let bnote = bdata.note;
+            let btags = bdata.tags;
             let mut releases: Vec<ReleaseOut> = bdata.releases.into_iter().map(flatten_release).collect();
             let n = merge_into(&mut releases, incoming);
             if n > 0 {
-                if !args.dry_run {
-                    fs::write(&base_path, render_ficha(&bmtype, id, &releases, &bnote))?;
+                if !dry_run {
+                    fs::write(&base_path, render_ficha(&bmtype, id, &releases, &bnote, &btags))?;
                 }
                 merged_fichas += 1;
                 added_links += n;
@@ -2126,11 +2359,11 @@ pub fn run_merge(args: MergeArgs) -> Result<()> {
             // Only in the other side: add it to the base under its per-type subdir.
             let links: usize = incoming.iter().map(|r| r.links.len()).sum();
             let dest = base_dir.join(subdir(&omtype)).join(format!("{omtype}-{id}.toml"));
-            if !args.dry_run {
+            if !dry_run {
                 if let Some(p) = dest.parent() {
                     fs::create_dir_all(p)?;
                 }
-                fs::write(&dest, render_ficha(&omtype, id, &incoming, &onote))?;
+                fs::write(&dest, render_ficha(&omtype, id, &incoming, &onote, &otags))?;
             }
             base.ids.insert(key.clone());
             base.paths.insert(key, dest);
@@ -2146,7 +2379,7 @@ pub fn run_merge(args: MergeArgs) -> Result<()> {
         green(&new_fichas.to_string()),
         cyan(&merged_fichas.to_string()),
         added_links,
-        if args.dry_run { dim(" (dry run, nothing written)") } else { String::new() }
+        if dry_run { dim(" (dry run, nothing written)") } else { String::new() }
     );
     Ok(())
 }

@@ -32,9 +32,9 @@ together.
 
 ## Build
 
-`tordo` has four commands: `generate` (build the site, the default when none is
-given), `import`, `merge`, and `check-cache` (see below). `cargo run` is `cargo
-run -- generate`:
+`tordo` has five commands: `generate` (build the site, the default when none is
+given), `import`, `extract`, `merge`, and `check-cache` (see below). `cargo run`
+is `cargo run -- generate`:
 
 ```sh
 export TMDB_READ_TOKEN=...   # TMDB v4 read access token (or TMDB_API_KEY)
@@ -76,21 +76,33 @@ With no `--db`, the Rucio daemon's own database is used. Useful flags:
 nothing), `--auto` (skip uncertain matches), `--limit N`; `tordo import --help`
 lists them all.
 
-Without a TMDB credential you can still extract the links offline with
-`--export links.json`: it groups the database into works and writes their links
-and release details to a file, no TMDB. Someone with a credential then finishes
-the import from that file with `--from-works links.json` instead of a database.
-Links already present in the target catalog are skipped, so re-importing is safe.
+### Hand-off without a TMDB credential
+
+`tordo extract links.json` groups the database into works and writes their links
+and release details to one compact file, **offline, no TMDB**. Someone with a
+credential then resolves it into fichas with `tordo import --from-links-file
+links.json` (mutually exclusive with `--db`). Links already in the target catalog
+are skipped, so re-importing is safe.
+
+### Hand-off as resolved fichas
+
+`tordo import --to-file bundle.json` resolves against TMDB but writes all the
+fichas to one compact bundle file instead of the content directory. Hand it to a
+catalog maintainer, who folds it in with `merge` (below) — no need to share the
+catalog itself. Both files are minified JSON, easy to send.
 
 ## Merging content
 
-`tordo merge <BASE> <OTHER>` folds a second content directory into the first,
-matching by link hash: every entry in `OTHER` is added to `BASE`, and for entries
-already present there only the **new** links are merged in — nothing is
-overwritten. Pass `--dry-run` to preview the changes.
+`tordo merge <BASE> <OTHER>` folds entries into `BASE` by link hash: every entry
+in `OTHER` is added, and for entries already present only the **new** links are
+merged in — nothing is overwritten. `OTHER` is a **content directory or a bundle
+file** from `import --to-file`. `BASE` may be empty or not exist yet (it is
+created), so a bundle can bootstrap a fresh catalog. Pass `--dry-run` to preview.
 
 ```sh
-cargo run -- merge content ../other-catalog/content
+cargo run -- merge content ../other-catalog/content   # another content dir
+cargo run -- merge content bundle.json                # a received bundle
+cargo run -- merge new-catalog bundle.json            # bootstrap from a bundle
 ```
 
 ## Container

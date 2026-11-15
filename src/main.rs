@@ -40,7 +40,13 @@ enum Command {
     },
     /// Import catalog entries from a Rucio database.
     Import(import::ImportArgs),
-    /// Merge one content directory into another (by link hash).
+    /// Extract a Rucio database's links to a portable file, offline (no TMDB).
+    ///
+    /// Hand the file to someone with a TMDB credential, who resolves it into
+    /// fichas with `tordo import --from-links-file`.
+    Extract(import::ExtractArgs),
+    /// Merge a content directory or a bundle file into a base catalog (by link
+    /// hash). The base may be empty, so a bundle can bootstrap a new catalog.
     Merge(import::MergeArgs),
     /// Report content entries whose TMDB payload is not committed under cache/.
     ///
@@ -59,6 +65,7 @@ fn main() -> Result<()> {
         None => generate(false, false),
         Some(Command::Generate { refresh_all, refresh_live }) => generate(refresh_all, refresh_live),
         Some(Command::Import(args)) => import::run(args),
+        Some(Command::Extract(args)) => import::run_extract(args),
         Some(Command::Merge(args)) => import::run_merge(args),
         Some(Command::CheckCache { strict }) => check_cache(strict),
     }
