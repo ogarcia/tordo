@@ -1808,6 +1808,26 @@ fn parse_id(s: &str, default_type: &str) -> Option<(String, i64)> {
     None
 }
 
+/// Persistent search-cache directory for `import --to-file`, which writes fichas
+/// to a throwaway temp dir and so has no catalog cache of its own. Reuse an
+/// existing catalog's cache when one is given (via --content or CATALOG_DIR) so
+/// prior lookups are shared; otherwise fall back to a per-user cache. Either way
+/// it survives across runs, so an interrupted export resumes without re-querying
+/// TMDB.
+fn to_file_cache_dir(content: &Option<String>) -> PathBuf {
+    if let Some(c) = content {
+        return absolute(c).parent().unwrap_or(Path::new(".")).join("cache").join("search");
+    }
+    if let Some(cd) = std::env::var_os("CATALOG_DIR") {
+        return Path::new(&cd).join("cache").join("search");
+    }
+    let base = std::env::var_os("XDG_CACHE_HOME")
+        .map(PathBuf::from)
+        .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".cache")))
+        .unwrap_or_else(std::env::temp_dir);
+    base.join("tordo").join("search")
+}
+
 pub fn run(args: ImportArgs) -> Result<()> {
     // Mutually exclusive inputs: --from-links-file reads an already-parsed file,
     // so there is nothing to extract.
@@ -1963,11 +1983,16 @@ pub fn run(args: ImportArgs) -> Result<()> {
         ));
     }
 
-    let cache_dir = content_dir
-        .parent()
-        .unwrap_or(Path::new("."))
-        .join("cache")
-        .join("search");
+    // The search cache (title -> TMDB id, no TTL) must be PERSISTENT so an
+    // interrupted run resumes without re-querying TMDB. A normal import uses the
+    // catalog's own cache/search next to content/. --to-file writes fichas to a
+    // throwaway temp dir, so point its cache at a stable place instead: the
+    // catalog's cache when one is given, else a per-user cache.
+    let cache_dir = if tmp_root.is_some() {
+        to_file_cache_dir(&args.content)
+    } else {
+        content_dir.parent().unwrap_or(Path::new(".")).join("cache").join("search")
+    };
     let mut tmdb = Tmdb::new(args.tmdb_key.clone(), args.tmdb_token.clone(), args.lang.clone(), cache_dir);
     if args.dry_run {
         println!("{}: querying TMDB, writing no .toml files.\n", yellow(&bold("DRY RUN")));
