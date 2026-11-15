@@ -81,6 +81,11 @@ pub struct ImportArgs {
     #[arg(long, value_name = "DIR")]
     pub mixed: Vec<String>,
 
+    /// Ignore DIR entirely — neither films nor series (repeatable). Its files are
+    /// dropped without grouping or review.
+    #[arg(long, value_name = "DIR")]
+    pub skip: Vec<String>,
+
     /// Per-release date: the file's share time (default) or today.
     #[arg(long, value_enum, default_value = "added")]
     pub date: DateMode,
@@ -150,6 +155,10 @@ pub struct ExtractArgs {
     #[arg(long, value_name = "DIR")]
     pub mixed: Vec<String>,
 
+    /// Ignore DIR entirely — neither films nor series (repeatable).
+    #[arg(long, value_name = "DIR")]
+    pub skip: Vec<String>,
+
     /// Per-release date: the file's share time (default) or today.
     #[arg(long, value_enum, default_value = "added")]
     pub date: DateMode,
@@ -171,6 +180,7 @@ pub fn run_extract(args: ExtractArgs) -> Result<()> {
         series: args.series,
         movies: args.movies,
         mixed: args.mixed,
+        skip: args.skip,
         date: args.date,
         auto: false,
         plan: false,
@@ -835,6 +845,7 @@ struct BuildOut {
     works: Vec<Work>,
     skipped_linked: usize,
     skipped_nonvideo: usize,
+    skipped_ignored: usize,
     role_dirs: HashMap<String, BTreeSet<String>>,
 }
 
@@ -843,6 +854,7 @@ fn build_works(rows: &[Row], linked: &BTreeSet<String>, overrides: &[(Vec<String
     let mut index: HashMap<String, usize> = HashMap::new();
     let mut skipped_linked = 0;
     let mut skipped_nonvideo = 0;
+    let mut skipped_ignored = 0;
     let mut role_dirs: HashMap<String, BTreeSet<String>> = HashMap::new();
 
     for (h, name, size, path, added_at) in rows {
@@ -860,6 +872,12 @@ fn build_works(rows: &[Row], linked: &BTreeSet<String>, overrides: &[(Vec<String
         }
         let (role, kw_idx) = classify_path(&parts, overrides);
         role_dirs.entry(role.clone()).or_default().insert(zone_dir(&parts, kw_idx));
+        // A directory marked "skip" holds neither films nor series: drop its
+        // files without grouping or reviewing them.
+        if role == "skip" {
+            skipped_ignored += 1;
+            continue;
+        }
         let (mut season, mut episode) = episode_of(name);
         let rel = parse_release(name);
 
@@ -959,7 +977,7 @@ fn build_works(rows: &[Row], linked: &BTreeSet<String>, overrides: &[(Vec<String
         });
     }
 
-    BuildOut { works, skipped_linked, skipped_nonvideo, role_dirs }
+    BuildOut { works, skipped_linked, skipped_nonvideo, skipped_ignored, role_dirs }
 }
 
 fn detect_libraries(rows: &[Row], linked: &BTreeSet<String>, overrides: &[(Vec<String>, String)]) -> Vec<(String, String, usize)> {
@@ -990,7 +1008,7 @@ fn role_index(role: &str) -> usize {
 
 fn confirm_libraries(libs: &[(String, String, usize)]) -> HashMap<String, String> {
     println!(
-        "{} {}1=series 2=movies 3=mixed:",
+        "{} {}1=series 2=movies 3=mixed 4=skip:",
         bold("Detected libraries"),
         dim("— press Enter to accept each, or type ")
     );
@@ -1004,6 +1022,7 @@ fn confirm_libraries(libs: &[(String, String, usize)]) -> HashMap<String, String
         ));
         let role = match ans.as_str() {
             "1" | "2" | "3" => ROLES[ans.parse::<usize>().unwrap() - 1].to_string(),
+            "4" | "s" | "x" => "skip".to_string(),
             _ => role.clone(),
         };
         chosen.insert(zd.clone(), role);
@@ -1848,6 +1867,9 @@ pub fn run(args: ImportArgs) -> Result<()> {
         for p in &args.mixed {
             overrides.push((path_parts(p), "mixed".into()));
         }
+        for p in &args.skip {
+            overrides.push((path_parts(p), "skip".into()));
+        }
         overrides.sort_by(|a, b| b.0.len().cmp(&a.0.len()));
 
         // --plan and --export are offline previews: never prompt for libraries.
@@ -1861,12 +1883,12 @@ pub fn run(args: ImportArgs) -> Result<()> {
             overrides.sort_by(|a, b| b.0.len().cmp(&a.0.len()));
         }
 
-        let BuildOut { works, skipped_linked, skipped_nonvideo, role_dirs } =
+        let BuildOut { works, skipped_linked, skipped_nonvideo, skipped_ignored, role_dirs } =
             build_works(&rows, &existing.linked, &overrides);
 
         if !interactive {
-            println!("{}", bold("Detected libraries") + &dim(" (override with --series/--movies/--mixed DIR):"));
-            for role in ["series", "movies", "mixed"] {
+            println!("{}", bold("Detected libraries") + &dim(" (override with --series/--movies/--mixed/--skip DIR):"));
+            for role in ["series", "movies", "mixed", "skip"] {
                 if let Some(dirs) = role_dirs.get(role) {
                     for d in dirs {
                         println!("  {} {d}", cyan(&format!("{role:7}")));
@@ -1878,7 +1900,7 @@ pub fn run(args: ImportArgs) -> Result<()> {
 
         let tv = works.iter().filter(|w| w.media_type == "tv").count();
         println!(
-            "DB rows: {} | skipped (already linked): {skipped_linked} | skipped (non-video): {skipped_nonvideo}",
+            "DB rows: {} | skipped (already linked): {skipped_linked} | skipped (non-video): {skipped_nonvideo} | ignored (skip dirs): {skipped_ignored}",
             rows.len()
         );
         println!(
