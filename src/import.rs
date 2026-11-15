@@ -684,10 +684,11 @@ struct BundleEntry {
     content: String,
 }
 
-/// Materialize a entries bundle into a fresh temp directory (the caller merges
-/// from it and removes it). Guards against path traversal from an untrusted
-/// bundle, and points the user at `import --from-links-file` for a links file.
-fn unpack_bundle(file: &Path) -> Result<PathBuf> {
+/// Parse an entries bundle into (key, TOML text) pairs to merge, entirely in
+/// memory (no temp files). Points the user at `import --from-links-file` for a
+/// links file. The key comes from the entry's file name, so a crafted `path`
+/// cannot escape the base — merge only ever writes under base/<subdir>/.
+fn bundle_inputs(file: &Path) -> Result<Vec<((String, i64), String)>> {
     let text = fs::read_to_string(file)
         .with_context(|| red(&format!("error: cannot read bundle file: {}", file.display())))?;
     let kind = serde_json::from_str::<serde_json::Value>(&text)
@@ -696,7 +697,7 @@ fn unpack_bundle(file: &Path) -> Result<PathBuf> {
         .unwrap_or_default();
     if kind == WORKS_FILE_KIND {
         bail!(red(&format!(
-            "error: {} is a links file, not a entries bundle.\n       resolve it first with `tordo import --from-links-file`.",
+            "error: {} is a links file, not an entries bundle.\n       resolve it first with `tordo import --from-links-file`.",
             file.display()
         )));
     }
@@ -708,19 +709,18 @@ fn unpack_bundle(file: &Path) -> Result<PathBuf> {
             doc.version
         )));
     }
-    let dir = std::env::temp_dir().join(format!("tordo-bundle-{}-{}", std::process::id(), now_secs()));
-    for f in &doc.entries {
-        let rel = Path::new(&f.path);
-        if rel.is_absolute() || rel.components().any(|c| matches!(c, std::path::Component::ParentDir)) {
-            bail!(red(&format!("error: unsafe path in bundle: {}", f.path)));
+    let id_re = Regex::new(r"^(tv|movie)-(\d+)\.toml$").unwrap();
+    let mut out = Vec::new();
+    for e in doc.entries {
+        let fname = Path::new(&e.path)
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        if let Some(c) = id_re.captures(&fname) {
+            out.push(((c[1].to_string(), c[2].parse().unwrap()), e.content));
         }
-        let dest = dir.join(rel);
-        if let Some(p) = dest.parent() {
-            fs::create_dir_all(p)?;
-        }
-        fs::write(&dest, &f.content)?;
     }
-    Ok(dir)
+    Ok(out)
 }
 
 /// Load works from a `--export` file, dropping files already linked in this
@@ -1859,18 +1859,6 @@ fn parse_id(s: &str, default_type: &str) -> Option<(String, i64)> {
     None
 }
 
-/// A temp directory removed when it goes out of scope. Cleans up on a normal
-/// return and on `?`-propagated errors (unwinding). A hard kill (Ctrl+C, SIGKILL,
-/// crash) skips Drop, so the run's own temp is left for the OS to reclaim; we
-/// never touch temps from other runs, which may still be in progress.
-struct TempDir(PathBuf);
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = fs::remove_dir_all(&self.0);
-    }
-}
-
 /// Persistent search-cache directory for `import --to-file`, which builds the
 /// bundle in memory and so has no catalog cache of its own. Reuse an
 /// existing catalog's cache when one is given (via --content or CATALOG_DIR) so
@@ -1887,7 +1875,8 @@ fn to_file_cache_dir(content: &Option<String>) -> PathBuf {
     let base = std::env::var_os("XDG_CACHE_HOME")
         .map(PathBuf::from)
         .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".cache")))
-        .unwrap_or_else(std::env::temp_dir);
+        // No HOME/XDG (rare): a hidden dir in the current directory, never /tmp.
+        .unwrap_or_else(|| PathBuf::from(".cache"));
     base.join("tordo").join("search")
 }
 
@@ -2432,40 +2421,44 @@ pub fn run_merge(args: MergeArgs) -> Result<()> {
     let base_dir = absolute(&args.base);
     let other_input = absolute(&args.other);
 
-    if other_input.is_file() {
-        // A portable entries bundle: unpack to a temp dir and merge from it. The
-        // TempDir guard removes it on return or error (a hard kill leaves its own
-        // temp for the OS to reclaim).
-        let tmp = TempDir(unpack_bundle(&other_input)?);
-        merge_dirs(&base_dir, &tmp.0, args.dry_run)
+    // The OTHER side becomes a list of (key, TOML text) in memory, from a bundle
+    // file or a content directory — no temp files either way.
+    let others = if other_input.is_file() {
+        bundle_inputs(&other_input)?
     } else if other_input.is_dir() {
-        merge_dirs(&base_dir, &other_input, args.dry_run)
+        let e = load_existing(&other_input);
+        let mut v = Vec::with_capacity(e.paths.len());
+        for (key, path) in e.paths {
+            let content = fs::read_to_string(&path).with_context(|| format!("reading {}", path.display()))?;
+            v.push((key, content));
+        }
+        v
     } else {
         bail!(red(&format!("error: content to merge not found: {}", other_input.display())))
-    }
+    };
+
+    merge_entries(&base_dir, others, args.dry_run)
 }
 
-/// Fold `other_dir` (a content directory) into `base_dir` by link hash. The base
-/// may be empty or missing (created on write), so this also bootstraps a catalog.
-fn merge_dirs(base_dir: &Path, other_dir: &Path, dry_run: bool) -> Result<()> {
+/// Fold entries (each a (type, id) key plus its TOML text) into `base_dir` by
+/// link hash — from a content directory or a bundle, all in memory. The base may
+/// be empty or missing (created on write), so this also bootstraps a catalog.
+fn merge_entries(base_dir: &Path, mut others: Vec<((String, i64), String)>, dry_run: bool) -> Result<()> {
     let mut base = load_existing(base_dir);
     if !base_dir.exists() {
         println!("{}", dim(&format!("base {} does not exist — creating it.", base_dir.display())));
     } else if base.ids.is_empty() {
         println!("{}", dim(&format!("base {} has no entries — merging as a fresh catalog.", base_dir.display())));
     }
-    let other = load_existing(other_dir);
 
     // Process in a stable order so output and any conflicts are reproducible.
-    let mut keys: Vec<(String, i64)> = other.paths.keys().cloned().collect();
-    keys.sort();
+    others.sort_by(|a, b| a.0.cmp(&b.0));
 
     let (mut new_entries, mut merged_entries, mut added_links) = (0usize, 0usize, 0usize);
-    for key in keys {
+    for (key, content) in others {
         let id = key.1;
-        let other_path = &other.paths[&key];
-        let data: ExEntry = toml::from_str(&fs::read_to_string(other_path)?)
-            .with_context(|| format!("parsing {}", other_path.display()))?;
+        let data: ExEntry = toml::from_str(&content)
+            .with_context(|| format!("parsing {}-{}", key.0, id))?;
         let onote = data.note.clone();
         let otags = data.tags.clone();
         let omtype = data.media_type.clone().unwrap_or_else(|| key.0.clone());
