@@ -80,14 +80,14 @@ lists them all.
 
 `tordo extract links.json` groups the database into works and writes their links
 and release details to one compact file, **offline, no TMDB**. Someone with a
-credential then resolves it into fichas with `tordo import --from-links-file
+credential then resolves it into entries with `tordo import --from-links-file
 links.json` (mutually exclusive with `--db`). Links already in the target catalog
 are skipped, so re-importing is safe.
 
-### Hand-off as resolved fichas
+### Hand-off as resolved entries
 
 `tordo import --to-file bundle.json` resolves against TMDB but writes all the
-fichas to one compact bundle file instead of the content directory. Hand it to a
+entries to one compact bundle file instead of the content directory. Hand it to a
 catalog maintainer, who folds it in with `merge` (below) — no need to share the
 catalog itself. Both files are minified JSON, easy to send.
 

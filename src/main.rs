@@ -43,7 +43,7 @@ enum Command {
     /// Extract a Rucio database's links to a portable file, offline (no TMDB).
     ///
     /// Hand the file to someone with a TMDB credential, who resolves it into
-    /// fichas with `tordo import --from-links-file`.
+    /// entries with `tordo import --from-links-file`.
     Extract(import::ExtractArgs),
     /// Merge a content directory or a bundle file into a base catalog (by link
     /// hash). The base may be empty, so a bundle can bootstrap a new catalog.
@@ -113,7 +113,7 @@ struct SiteConfig {
 // ---------------------------------------------------------------------------
 
 #[derive(Deserialize)]
-struct RawFicha {
+struct RawEntry {
     #[serde(rename = "type")]
     media_type: String,
     id: u64,
@@ -251,7 +251,7 @@ struct LinkView {
 }
 
 #[derive(Serialize)]
-struct FichaView {
+struct EntryView {
     slug: String,
     media_type: String,
     title: String,
@@ -980,7 +980,7 @@ fn check_cache(strict: bool) -> Result<()> {
     let entries = collect_toml(&content_dir);
     let mut missing: Vec<(String, std::path::PathBuf)> = Vec::new();
     for path in &entries {
-        let raw: RawFicha = toml::from_str(&fs::read_to_string(path)?)
+        let raw: RawEntry = toml::from_str(&fs::read_to_string(path)?)
             .with_context(|| format!("parsing {}", path.display()))?;
         let rel = Path::new(CACHE_DIR)
             .join(import::subdir(&raw.media_type))
@@ -1075,20 +1075,20 @@ fn generate(refresh_all: bool, refresh_live: bool) -> Result<()> {
     )
     .context("loading templates")?;
 
-    // Read and enrich every ficha, scanning content/ recursively so its layout
+    // Read and enrich every entry, scanning content/ recursively so its layout
     // is free (flat, or split into tv/ and movies/). Fall back to the documented
     // examples/ when content/ has no entries, so a fresh checkout still renders a
     // demo.
-    let mut entries = collect_toml(&content_dir);
-    let source = if entries.is_empty() {
-        entries = collect_toml(&assets.join(EXAMPLES_DIR));
+    let mut toml_paths = collect_toml(&content_dir);
+    let source = if toml_paths.is_empty() {
+        toml_paths = collect_toml(&assets.join(EXAMPLES_DIR));
         EXAMPLES_DIR
     } else {
         CONTENT_DIR
     };
-    let mut fichas: Vec<(FichaView, Card)> = Vec::new();
-    for path in entries {
-        let raw: RawFicha = toml::from_str(&fs::read_to_string(&path)?)
+    let mut entries: Vec<(EntryView, Card)> = Vec::new();
+    for path in toml_paths {
+        let raw: RawEntry = toml::from_str(&fs::read_to_string(&path)?)
             .with_context(|| format!("parsing {}", path.display()))?;
         let slug = path.file_stem().unwrap().to_string_lossy().into_owned();
 
@@ -1114,7 +1114,7 @@ fn generate(refresh_all: bool, refresh_live: bool) -> Result<()> {
         }
         let season_count = seasons.len();
 
-        // The ficha's date is the most recent of its releases' dates: when a new
+        // The entry's date is the most recent of its releases' dates: when a new
         // release (a season, a quality, more episodes) lands, the entry
         // resurfaces as updated. No dated release → empty, so it sorts last.
         let effective_date = raw
@@ -1152,7 +1152,7 @@ fn generate(refresh_all: bool, refresh_live: bool) -> Result<()> {
             resolutions,
             tags,
         };
-        let ficha = FichaView {
+        let entry = EntryView {
             slug,
             media_type: raw.media_type,
             title,
@@ -1168,17 +1168,17 @@ fn generate(refresh_all: bool, refresh_live: bool) -> Result<()> {
             credit: det.credit,
             releases,
         };
-        fichas.push((ficha, card));
+        entries.push((entry, card));
     }
 
     // Default ordering: newest alta first. The browser can re-sort live.
-    fichas.sort_by(|a, b| b.1.date.cmp(&a.1.date));
+    entries.sort_by(|a, b| b.1.date.cmp(&a.1.date));
 
     // Output goes to dist/ by default; CATALOG_OUT redirects it (the container
     // points it at the mounted catalog so the built site lands beside it).
     let out_dir = std::env::var("CATALOG_OUT").unwrap_or_else(|_| OUT_DIR.to_string());
     let out = Path::new(&out_dir);
-    // Rebuild the output from scratch so renamed or removed fichas leave no stale pages.
+    // Rebuild the output from scratch so renamed or removed entries leave no stale pages.
     if out.exists() {
         fs::remove_dir_all(out).with_context(|| format!("clearing {out_dir}/"))?;
     }
@@ -1187,17 +1187,17 @@ fn generate(refresh_all: bool, refresh_live: bool) -> Result<()> {
     let base = cfg.base_url.trim_end_matches('/').to_string();
 
     // Catalog figures for the About modal (built once, rendered on every page).
-    let movies = fichas.iter().filter(|(f, _)| f.media_type == "movie").count();
-    let series = fichas.iter().filter(|(f, _)| f.media_type == "tv").count();
-    let seasons: usize = fichas.iter().map(|(_, c)| c.season_count).sum();
-    let releases: usize = fichas.iter().map(|(f, _)| f.releases.len()).sum();
-    let links: usize = fichas
+    let movies = entries.iter().filter(|(f, _)| f.media_type == "movie").count();
+    let series = entries.iter().filter(|(f, _)| f.media_type == "tv").count();
+    let seasons: usize = entries.iter().map(|(_, c)| c.season_count).sum();
+    let releases: usize = entries.iter().map(|(f, _)| f.releases.len()).sum();
+    let links: usize = entries
         .iter()
         .flat_map(|(f, _)| f.releases.iter())
         .map(|r| r.links.len())
         .sum();
     let stats = serde_json::json!({
-        "total": fichas.len(),
+        "total": entries.len(),
         "movies": movies,
         "series": series,
         "seasons": seasons,
@@ -1220,7 +1220,7 @@ fn generate(refresh_all: bool, refresh_live: bool) -> Result<()> {
     };
 
     // Home.
-    let cards: Vec<Card> = fichas.iter().map(|(_, c)| c.clone()).collect();
+    let cards: Vec<Card> = entries.iter().map(|(_, c)| c.clone()).collect();
     let home_meta = Meta {
         doc_title: cfg.title.clone(),
         title: cfg.title.clone(),
@@ -1243,37 +1243,37 @@ fn generate(refresh_all: bool, refresh_live: bool) -> Result<()> {
     fs::write(out.join("index.json"), serde_json::to_string(&cards)?)?;
 
     // Detail pages.
-    for (ficha, _) in &fichas {
+    for (entry, _) in &entries {
         let meta = Meta {
-            doc_title: format!("{} · {}", ficha.title, cfg.title),
-            title: if ficha.year.is_empty() {
-                ficha.title.clone()
+            doc_title: format!("{} · {}", entry.title, cfg.title),
+            title: if entry.year.is_empty() {
+                entry.title.clone()
             } else {
-                format!("{} ({})", ficha.title, ficha.year)
+                format!("{} ({})", entry.title, entry.year)
             },
-            description: if !ficha.tagline.is_empty() {
-                ficha.tagline.clone()
+            description: if !entry.tagline.is_empty() {
+                entry.tagline.clone()
             } else {
-                truncate(&ficha.overview, 200)
+                truncate(&entry.overview, 200)
             },
-            image: if !ficha.poster.is_empty() {
-                ficha.poster.clone()
+            image: if !entry.poster.is_empty() {
+                entry.poster.clone()
             } else {
                 home_image.clone()
             },
             url: if base.is_empty() {
                 String::new()
             } else {
-                format!("{base}/{}.html", ficha.slug)
+                format!("{base}/{}.html", entry.slug)
             },
         };
         let mut ctx = Context::new();
         ctx.insert("site", &site);
         ctx.insert("t", &locale);
         ctx.insert("meta", &meta);
-        ctx.insert("f", ficha);
+        ctx.insert("f", entry);
         fs::write(
-            out.join(format!("{}.html", ficha.slug)),
+            out.join(format!("{}.html", entry.slug)),
             tera.render("detail.html", &ctx)?,
         )?;
     }
@@ -1299,7 +1299,7 @@ fn generate(refresh_all: bool, refresh_live: bool) -> Result<()> {
     if source == EXAMPLES_DIR {
         eprintln!("note: no entries under {}/ — rendered {EXAMPLES_DIR}/ as a demo", content_dir.display());
     }
-    println!("Generated {} fichas into {out_dir}/", fichas.len());
+    println!("Generated {} entries into {out_dir}/", entries.len());
     Ok(())
 }
 

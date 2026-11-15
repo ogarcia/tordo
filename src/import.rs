@@ -103,7 +103,7 @@ pub struct ImportArgs {
     #[arg(long, value_name = "PATH", conflicts_with = "db")]
     pub from_links_file: Option<String>,
 
-    /// Write the resolved fichas to one portable bundle file at PATH (instead of
+    /// Write the resolved entries to one portable bundle file at PATH (instead of
     /// the content directory). Hand it to a maintainer to fold in with `merge`.
     #[arg(long, value_name = "PATH")]
     pub to_file: Option<String>,
@@ -656,27 +656,27 @@ fn write_works_file(path: &str, works: Vec<Work>) -> Result<(usize, usize)> {
     Ok((doc.works.len(), links))
 }
 
-/// On-disk envelope for a portable ficha bundle (`import --to-file` / `merge`):
-/// the content fichas as verbatim TOML text, so every field round-trips. Just
+/// On-disk envelope for a portable entry bundle (`import --to-file` / `merge`):
+/// the content entries as verbatim TOML text, so every field round-trips. Just
 /// minified JSON — no extra dependencies.
 #[derive(Serialize, Deserialize)]
 struct BundleFile {
     #[serde(default)]
     kind: String,
     version: u32,
-    fichas: Vec<BundleFicha>,
+    entries: Vec<BundleEntry>,
 }
 
 #[derive(Serialize, Deserialize)]
-struct BundleFicha {
+struct BundleEntry {
     /// Path relative to the content root, e.g. "tv/tv-1396.toml".
     path: String,
     content: String,
 }
 
-/// Pack every `*.toml` ficha under `content_dir` into one minified JSON bundle.
+/// Pack every `*.toml` entry under `content_dir` into one minified JSON bundle.
 fn write_bundle(content_dir: &Path, out: &str) -> Result<usize> {
-    let mut fichas: Vec<BundleFicha> = Vec::new();
+    let mut entries: Vec<BundleEntry> = Vec::new();
     let mut stack = vec![content_dir.to_path_buf()];
     while let Some(dir) = stack.pop() {
         let Ok(rd) = fs::read_dir(&dir) else { continue };
@@ -695,16 +695,16 @@ fn write_bundle(content_dir: &Path, out: &str) -> Result<usize> {
                 .to_string_lossy()
                 .replace('\\', "/");
             let content = fs::read_to_string(&path).with_context(|| format!("reading {}", path.display()))?;
-            fichas.push(BundleFicha { path: rel, content });
+            entries.push(BundleEntry { path: rel, content });
         }
     }
-    fichas.sort_by(|a, b| a.path.cmp(&b.path));
-    let doc = BundleFile { kind: BUNDLE_FILE_KIND.into(), version: BUNDLE_FORMAT_VERSION, fichas };
+    entries.sort_by(|a, b| a.path.cmp(&b.path));
+    let doc = BundleFile { kind: BUNDLE_FILE_KIND.into(), version: BUNDLE_FORMAT_VERSION, entries };
     fs::write(out, serde_json::to_string(&doc)?)?;
-    Ok(doc.fichas.len())
+    Ok(doc.entries.len())
 }
 
-/// Materialize a fichas bundle into a fresh temp directory (the caller merges
+/// Materialize a entries bundle into a fresh temp directory (the caller merges
 /// from it and removes it). Guards against path traversal from an untrusted
 /// bundle, and points the user at `import --from-links-file` for a links file.
 fn unpack_bundle(file: &Path) -> Result<PathBuf> {
@@ -716,12 +716,12 @@ fn unpack_bundle(file: &Path) -> Result<PathBuf> {
         .unwrap_or_default();
     if kind == WORKS_FILE_KIND {
         bail!(red(&format!(
-            "error: {} is a links file, not a fichas bundle.\n       resolve it first with `tordo import --from-links-file`.",
+            "error: {} is a links file, not a entries bundle.\n       resolve it first with `tordo import --from-links-file`.",
             file.display()
         )));
     }
     let doc: BundleFile = serde_json::from_str(&text)
-        .with_context(|| red(&format!("error: not a valid fichas bundle: {}", file.display())))?;
+        .with_context(|| red(&format!("error: not a valid entries bundle: {}", file.display())))?;
     if doc.version != BUNDLE_FORMAT_VERSION {
         bail!(red(&format!(
             "error: bundle version {} is not supported (expected {BUNDLE_FORMAT_VERSION}).",
@@ -729,7 +729,7 @@ fn unpack_bundle(file: &Path) -> Result<PathBuf> {
         )));
     }
     let dir = std::env::temp_dir().join(format!("tordo-bundle-{}-{}", std::process::id(), now_secs()));
-    for f in &doc.fichas {
+    for f in &doc.entries {
         let rel = Path::new(&f.path);
         if rel.is_absolute() || rel.components().any(|c| matches!(c, std::path::Component::ParentDir)) {
             bail!(red(&format!("error: unsafe path in bundle: {}", f.path)));
@@ -754,7 +754,7 @@ fn load_works_file(path: &str, linked: &BTreeSet<String>) -> Result<Vec<Work>> {
         .unwrap_or_default();
     if kind == BUNDLE_FILE_KIND {
         bail!(red(&format!(
-            "error: {path} is a fichas bundle, not a links file.\n       merge it with `tordo merge <catalog>/content {path}`."
+            "error: {path} is a entries bundle, not a links file.\n       merge it with `tordo merge <catalog>/content {path}`."
         )));
     }
     let doc: WorksFile = serde_json::from_str(&text)
@@ -1482,7 +1482,7 @@ fn render_release(r: &ReleaseOut) -> String {
     out.join("\n")
 }
 
-fn render_ficha(media_type: &str, tmdb_id: i64, releases: &[ReleaseOut], note: &Option<String>, tags: &[String]) -> String {
+fn render_entry(media_type: &str, tmdb_id: i64, releases: &[ReleaseOut], note: &Option<String>, tags: &[String]) -> String {
     let mut head = vec![format!("type = \"{media_type}\""), format!("id   = {tmdb_id}")];
     if let Some(n) = note {
         head.push(format!("note = {}", toml_str(n)));
@@ -1494,7 +1494,7 @@ fn render_ficha(media_type: &str, tmdb_id: i64, releases: &[ReleaseOut], note: &
     format!("{}\n\n{}\n", head.join("\n"), blocks.join("\n\n"))
 }
 
-// Existing-ficha parsing for merge.
+// Existing-entry parsing for merge.
 #[derive(Deserialize, Default)]
 struct ExCodec {
     video: Option<String>,
@@ -1532,7 +1532,7 @@ struct ExRelease {
     links: Vec<String>,
 }
 #[derive(Deserialize)]
-struct ExFicha {
+struct ExEntry {
     #[serde(rename = "type")]
     media_type: Option<String>,
     note: Option<String>,
@@ -1691,7 +1691,7 @@ fn write_entry(work: &Work, tmdb_id: i64, content_dir: &Path, mode: DateMode, ex
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)?;
     }
-    fs::write(&path, render_ficha(&work.media_type, tmdb_id, &build_releases(work, mode), &None, &[]))?;
+    fs::write(&path, render_entry(&work.media_type, tmdb_id, &build_releases(work, mode), &None, &[]))?;
     existing_paths.insert((work.media_type.clone(), tmdb_id), path);
     println!("  {} {}-{tmdb_id}  {:?} ({} files)", green("+"), work.media_type, work.title, work.files.len());
     Ok(())
@@ -1751,7 +1751,7 @@ fn merge_into(releases: &mut Vec<ReleaseOut>, incoming: Vec<ReleaseOut>) -> usiz
 
 fn merge_entry(work: &Work, tmdb_id: i64, content_dir: &Path, mode: DateMode, existing_paths: &mut HashMap<(String, i64), PathBuf>) -> Result<usize> {
     let path = entry_path(content_dir, &work.media_type, tmdb_id, existing_paths);
-    let data: ExFicha = toml::from_str(&fs::read_to_string(&path)?)?;
+    let data: ExEntry = toml::from_str(&fs::read_to_string(&path)?)?;
     let mtype = data.media_type.unwrap_or_else(|| work.media_type.clone());
     let note = data.note;
     let tags = data.tags;
@@ -1760,7 +1760,7 @@ fn merge_entry(work: &Work, tmdb_id: i64, content_dir: &Path, mode: DateMode, ex
     if added == 0 {
         return Ok(0);
     }
-    fs::write(&path, render_ficha(&mtype, tmdb_id, &releases, &note, &tags))?;
+    fs::write(&path, render_entry(&mtype, tmdb_id, &releases, &note, &tags))?;
     println!("  {} merge  {mtype}-{tmdb_id}  {} -> {:?}", cyan("^"), cyan(&format!("+{added} links")), work.title);
     Ok(added)
 }
@@ -2017,7 +2017,7 @@ pub fn run(args: ImportArgs) -> Result<()> {
         if let (Some(out), Some(root)) = (&args.to_file, &tmp_root) {
             let n = write_bundle(&content_dir, out)?;
             let _ = fs::remove_dir_all(root);
-            println!("\n{}{} ({n} fichas)", bold("Bundle: "), absolute(out).display());
+            println!("\n{}{} ({n} entries)", bold("Bundle: "), absolute(out).display());
             println!("{}", dim("Hand it to a maintainer to fold in with `tordo merge`."));
         } else {
             println!("Review the new content/*.toml, then rebuild with `tordo generate`.");
@@ -2199,7 +2199,12 @@ fn releases_json(releases: &[ReleaseOut]) -> Value {
                     "source": r.source, "resolution": r.resolution,
                     "hdr": r.hdr, "container": r.container,
                     "codec": {"video": r.vcodec, "audio": r.acodec},
-                    "language": {"audio": r.audio, "subtitles": r.subs},
+                    "language": {
+                        "audio": r.audio,
+                        "audio_description": r.audio_desc,
+                        "subtitles": r.subs,
+                        "subtitles_sdh": r.subs_sdh,
+                    },
                     "links": r.links,
                 })
             })
@@ -2254,13 +2259,13 @@ fn write_report(path: &str, records: &[Record], works: &[Work], args: &ImportArg
         String::new(),
     ];
     let w = group("write");
-    lines.push(format!("## {head} — new fichas ({})", w.len()));
+    lines.push(format!("## {head} — new entries ({})", w.len()));
     for r in &w {
         lines.push(format!("  {}\t{} ({})\t{} files", r.target.clone().unwrap_or_default(), r.title, r.year.clone().unwrap_or_else(|| "?".into()), r.files));
     }
     lines.push(String::new());
     let e = group("merge");
-    lines.push(format!("## {mhead} — links added to an existing ficha ({})", e.len()));
+    lines.push(format!("## {mhead} — links added to an existing entry ({})", e.len()));
     for r in &e {
         lines.push(format!("  {}\t{} ({})\t+{} links", r.target.clone().unwrap_or_default(), r.title, r.year.clone().unwrap_or_else(|| "?".into()), r.added_links.unwrap_or(0)));
     }
@@ -2299,7 +2304,7 @@ pub fn run_merge(args: MergeArgs) -> Result<()> {
     let other_input = absolute(&args.other);
 
     if other_input.is_file() {
-        // A portable fichas bundle: unpack to a temp dir, merge, then clean up.
+        // A portable entries bundle: unpack to a temp dir, merge, then clean up.
         let tmp = unpack_bundle(&other_input)?;
         let res = merge_dirs(&base_dir, &tmp, args.dry_run);
         let _ = fs::remove_dir_all(&tmp);
@@ -2326,11 +2331,11 @@ fn merge_dirs(base_dir: &Path, other_dir: &Path, dry_run: bool) -> Result<()> {
     let mut keys: Vec<(String, i64)> = other.paths.keys().cloned().collect();
     keys.sort();
 
-    let (mut new_fichas, mut merged_fichas, mut added_links) = (0usize, 0usize, 0usize);
+    let (mut new_entries, mut merged_entries, mut added_links) = (0usize, 0usize, 0usize);
     for key in keys {
         let id = key.1;
         let other_path = &other.paths[&key];
-        let data: ExFicha = toml::from_str(&fs::read_to_string(other_path)?)
+        let data: ExEntry = toml::from_str(&fs::read_to_string(other_path)?)
             .with_context(|| format!("parsing {}", other_path.display()))?;
         let onote = data.note.clone();
         let otags = data.tags.clone();
@@ -2338,9 +2343,9 @@ fn merge_dirs(base_dir: &Path, other_dir: &Path, dry_run: bool) -> Result<()> {
         let incoming: Vec<ReleaseOut> = data.releases.into_iter().map(flatten_release).collect();
 
         if base.ids.contains(&key) {
-            // Same entry on both sides: fold the new links into the base ficha.
+            // Same entry on both sides: fold the new links into the base entry.
             let base_path = base.paths[&key].clone();
-            let bdata: ExFicha = toml::from_str(&fs::read_to_string(&base_path)?)
+            let bdata: ExEntry = toml::from_str(&fs::read_to_string(&base_path)?)
                 .with_context(|| format!("parsing {}", base_path.display()))?;
             let bmtype = bdata.media_type.unwrap_or_else(|| key.0.clone());
             let bnote = bdata.note;
@@ -2349,9 +2354,9 @@ fn merge_dirs(base_dir: &Path, other_dir: &Path, dry_run: bool) -> Result<()> {
             let n = merge_into(&mut releases, incoming);
             if n > 0 {
                 if !dry_run {
-                    fs::write(&base_path, render_ficha(&bmtype, id, &releases, &bnote, &btags))?;
+                    fs::write(&base_path, render_entry(&bmtype, id, &releases, &bnote, &btags))?;
                 }
-                merged_fichas += 1;
+                merged_entries += 1;
                 added_links += n;
                 println!("  {} merge  {bmtype}-{id}  {}", cyan("^"), cyan(&format!("+{n} links")));
             }
@@ -2363,21 +2368,21 @@ fn merge_dirs(base_dir: &Path, other_dir: &Path, dry_run: bool) -> Result<()> {
                 if let Some(p) = dest.parent() {
                     fs::create_dir_all(p)?;
                 }
-                fs::write(&dest, render_ficha(&omtype, id, &incoming, &onote, &otags))?;
+                fs::write(&dest, render_entry(&omtype, id, &incoming, &onote, &otags))?;
             }
             base.ids.insert(key.clone());
             base.paths.insert(key, dest);
-            new_fichas += 1;
+            new_entries += 1;
             added_links += links;
             println!("  {} new    {omtype}-{id}  ({links} links)", green("+"));
         }
     }
 
     println!(
-        "\n{}: {} new fichas, {} merged, {} links added{}",
+        "\n{}: {} new entries, {} merged, {} links added{}",
         bold("merge"),
-        green(&new_fichas.to_string()),
-        cyan(&merged_fichas.to_string()),
+        green(&new_entries.to_string()),
+        cyan(&merged_entries.to_string()),
         added_links,
         if dry_run { dim(" (dry run, nothing written)") } else { String::new() }
     );
