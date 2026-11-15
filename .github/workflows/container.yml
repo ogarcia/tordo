@@ -77,6 +77,32 @@ jobs:
           path: artifacts/
           retention-days: 1
 
+      # Package the binary WITH the runtime assets so it is usable on its own:
+      # the generator reads templates/i18n/static/examples from TORDO_ASSETS or
+      # the working directory, so a bare binary cannot run alone. Published only
+      # for master, so anyone can grab a recent build without the container
+      # image; older ones expire on their own via retention. Tags go through
+      # release.yml.
+      - name: Package binary with assets
+        if: github.ref == 'refs/heads/master'
+        shell: bash
+        run: |
+          STAGE=tordo-master-${{ matrix.arch }}
+          mkdir -p "$STAGE"
+          cp target/${{ matrix.target }}/release/tordo "$STAGE/"
+          strip "$STAGE/tordo"
+          cp -r templates static examples i18n config.example.toml README.md "$STAGE/"
+          tar -czf "$STAGE.tar.gz" "$STAGE"
+
+      - name: Upload packaged binary
+        if: github.ref == 'refs/heads/master'
+        uses: actions/upload-artifact@v7
+        with:
+          name: tordo-master-${{ matrix.arch }}
+          path: tordo-master-${{ matrix.arch }}.tar.gz
+          retention-days: 30
+          if-no-files-found: error
+
   # ── Build and push the multi-arch image ────────────────────────────────────
   image:
     name: Build and push image
