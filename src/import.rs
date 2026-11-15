@@ -1806,6 +1806,18 @@ fn parse_id(s: &str, default_type: &str) -> Option<(String, i64)> {
     None
 }
 
+/// A temp directory removed when it goes out of scope. Cleans up on a normal
+/// return and on `?`-propagated errors (unwinding). A hard kill (Ctrl+C, SIGKILL,
+/// crash) skips Drop, so the run's own temp is left for the OS to reclaim; we
+/// never touch temps from other runs, which may still be in progress.
+struct TempDir(PathBuf);
+
+impl Drop for TempDir {
+    fn drop(&mut self) {
+        let _ = fs::remove_dir_all(&self.0);
+    }
+}
+
 /// Persistent search-cache directory for `import --to-file`, which writes fichas
 /// to a throwaway temp dir and so has no catalog cache of its own. Reuse an
 /// existing catalog's cache when one is given (via --content or CATALOG_DIR) so
@@ -1837,13 +1849,14 @@ pub fn run(args: ImportArgs) -> Result<()> {
     }
 
     // --to-file resolves into a throwaway temp dir that is then packed into the
-    // bundle; a normal import writes straight into the catalog's content dir.
+    // bundle; a normal import writes straight into the catalog's content dir. The
+    // temp is an RAII TempDir so it is removed on return or on any `?` error.
     let tmp_root = args
         .to_file
         .as_ref()
-        .map(|_| std::env::temp_dir().join(format!("tordo-import-{}-{}", std::process::id(), now_secs())));
+        .map(|_| TempDir(std::env::temp_dir().join(format!("tordo-import-{}-{}", std::process::id(), now_secs()))));
     let content_dir = match &tmp_root {
-        Some(root) => root.join("content"),
+        Some(guard) => guard.0.join("content"),
         None => resolve_content(&args.content)?,
     };
     let mut existing = load_existing(&content_dir);
@@ -2070,9 +2083,9 @@ pub fn run(args: ImportArgs) -> Result<()> {
         println!("{}", dim("\n(nothing written; pass --report PATH [--report-format json] to save a detailed report)"));
     }
     if !args.dry_run {
-        if let (Some(out), Some(root)) = (&args.to_file, &tmp_root) {
+        if let Some(out) = &args.to_file {
+            // tmp_root (the TempDir guard) is removed when run() returns.
             let n = write_bundle(&content_dir, out)?;
-            let _ = fs::remove_dir_all(root);
             println!("\n{}{} ({n} entries)", bold("Bundle: "), absolute(out).display());
             println!("{}", dim("Hand it to a maintainer to fold in with `tordo merge`."));
         } else {
@@ -2363,11 +2376,11 @@ pub fn run_merge(args: MergeArgs) -> Result<()> {
     let other_input = absolute(&args.other);
 
     if other_input.is_file() {
-        // A portable entries bundle: unpack to a temp dir, merge, then clean up.
-        let tmp = unpack_bundle(&other_input)?;
-        let res = merge_dirs(&base_dir, &tmp, args.dry_run);
-        let _ = fs::remove_dir_all(&tmp);
-        res
+        // A portable entries bundle: unpack to a temp dir and merge from it. The
+        // TempDir guard removes it on return or error (a hard kill leaves its own
+        // temp for the OS to reclaim).
+        let tmp = TempDir(unpack_bundle(&other_input)?);
+        merge_dirs(&base_dir, &tmp.0, args.dry_run)
     } else if other_input.is_dir() {
         merge_dirs(&base_dir, &other_input, args.dry_run)
     } else {
