@@ -1712,7 +1712,6 @@ fn write_entry(work: &Work, tmdb_id: i64, content_dir: &Path, mode: DateMode, ex
     }
     fs::write(&path, render_entry(&work.media_type, tmdb_id, &build_releases(work, mode), &None, &[]))?;
     existing_paths.insert((work.media_type.clone(), tmdb_id), path);
-    println!("  {} {}-{tmdb_id}  {:?} ({} files)", green("+"), work.media_type, work.title, work.files.len());
     Ok(())
 }
 
@@ -1780,7 +1779,6 @@ fn merge_entry(work: &Work, tmdb_id: i64, content_dir: &Path, mode: DateMode, ex
         return Ok(0);
     }
     fs::write(&path, render_entry(&mtype, tmdb_id, &releases, &note, &tags))?;
-    println!("  {} merge  {mtype}-{tmdb_id}  {} -> {:?}", cyan("^"), cyan(&format!("+{added} links")), work.title);
     Ok(added)
 }
 
@@ -2001,6 +1999,7 @@ pub fn run(args: ImportArgs) -> Result<()> {
     }
 
     let mut records: Vec<Record> = Vec::new();
+    let total = works.len();
     for (idx, w) in works.iter().enumerate() {
         let res = resolve(&w.media_type, w, &mut tmdb);
         let mut status = "doubtful".to_string();
@@ -2023,20 +2022,30 @@ pub fn run(args: ImportArgs) -> Result<()> {
             added_links: None,
             target,
         };
+        // One line per work, counter-prefixed, so progress is visible through
+        // the whole run (including doubtful ones, which keeps it monotonic).
+        let prog = dim(&format!("[{}/{total}]", idx + 1));
         if status == "write" {
-            existing.ids.insert((w.media_type.clone(), res.id.unwrap()));
+            let id = res.id.unwrap();
+            existing.ids.insert((w.media_type.clone(), id));
             if args.dry_run {
-                println!("{}{}  {:?}", dim("  ~ would write "), green(&format!("{}-{}", w.media_type, res.id.unwrap())), w.title);
+                println!("{prog} {} {}  {:?}", dim("~ would write"), green(&format!("{}-{id}", w.media_type)), w.title);
             } else {
-                write_entry(w, res.id.unwrap(), &content_dir, args.date, &mut existing.paths)?;
+                write_entry(w, id, &content_dir, args.date, &mut existing.paths)?;
+                println!("{prog} {} {}-{id}  {:?} ({} files)", green("+"), w.media_type, w.title, w.files.len());
             }
         } else if status == "merge" {
+            let id = res.id.unwrap();
             if args.dry_run {
                 rec.added_links = Some(w.files.len());
-                println!("{}{}  +{} links  {:?}", dim("  ~ would merge "), cyan(&format!("{}-{}", w.media_type, res.id.unwrap())), w.files.len(), w.title);
+                println!("{prog} {} {}  +{} links  {:?}", dim("~ would merge"), cyan(&format!("{}-{id}", w.media_type)), w.files.len(), w.title);
             } else {
-                rec.added_links = Some(merge_entry(w, res.id.unwrap(), &content_dir, args.date, &mut existing.paths)?);
+                let n = merge_entry(w, id, &content_dir, args.date, &mut existing.paths)?;
+                rec.added_links = Some(n);
+                println!("{prog} {} merge  {}-{id}  {}  {:?}", cyan("^"), w.media_type, cyan(&format!("+{n} links")), w.title);
             }
+        } else {
+            println!("{prog} {} {:?}{}", yellow("?"), w.title, dim(" (doubtful)"));
         }
         records.push(rec);
     }
@@ -2216,11 +2225,14 @@ fn review(records: &mut [Record], works: &[Work], content_dir: &Path, mode: Date
         records[ri].target = Some(format!("{}/{}-{cid}.toml", subdir(&ctype), ctype));
         if existing.ids.contains(&(ctype.clone(), cid)) {
             records[ri].status = "merge".into();
-            records[ri].added_links = Some(merge_entry(&cw, cid, content_dir, mode, &mut existing.paths)?);
+            let n = merge_entry(&cw, cid, content_dir, mode, &mut existing.paths)?;
+            records[ri].added_links = Some(n);
+            println!("  {} merge  {ctype}-{cid}  {}  {:?}", cyan("^"), cyan(&format!("+{n} links")), cw.title);
         } else {
             write_entry(&cw, cid, content_dir, mode, &mut existing.paths)?;
             existing.ids.insert((ctype.clone(), cid));
             records[ri].status = "write".into();
+            println!("  {} {ctype}-{cid}  {:?} ({} files)", green("+"), cw.title, cw.files.len());
         }
     }
     Ok(())
