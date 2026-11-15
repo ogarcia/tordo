@@ -9,7 +9,7 @@
 //! adds what is missing. Works whose TMDB match is uncertain are "doubtful": by
 //! default the user is asked about them at the end; with --auto they are skipped.
 
-use std::collections::{BTreeSet, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::fs;
 use std::io::{self, IsTerminal, Write};
 use std::path::{Path, PathBuf};
@@ -682,36 +682,6 @@ struct BundleEntry {
     /// Path relative to the content root, e.g. "tv/tv-1396.toml".
     path: String,
     content: String,
-}
-
-/// Pack every `*.toml` entry under `content_dir` into one minified JSON bundle.
-fn write_bundle(content_dir: &Path, out: &str) -> Result<usize> {
-    let mut entries: Vec<BundleEntry> = Vec::new();
-    let mut stack = vec![content_dir.to_path_buf()];
-    while let Some(dir) = stack.pop() {
-        let Ok(rd) = fs::read_dir(&dir) else { continue };
-        for entry in rd.flatten() {
-            let path = entry.path();
-            if path.is_dir() {
-                stack.push(path);
-                continue;
-            }
-            if path.extension().and_then(|e| e.to_str()) != Some("toml") {
-                continue;
-            }
-            let rel = path
-                .strip_prefix(content_dir)
-                .unwrap_or(&path)
-                .to_string_lossy()
-                .replace('\\', "/");
-            let content = fs::read_to_string(&path).with_context(|| format!("reading {}", path.display()))?;
-            entries.push(BundleEntry { path: rel, content });
-        }
-    }
-    entries.sort_by(|a, b| a.path.cmp(&b.path));
-    let doc = BundleFile { kind: BUNDLE_FILE_KIND.into(), version: BUNDLE_FORMAT_VERSION, entries };
-    fs::write(out, serde_json::to_string(&doc)?)?;
-    Ok(doc.entries.len())
 }
 
 /// Materialize a entries bundle into a fresh temp directory (the caller merges
@@ -1705,14 +1675,112 @@ struct Record {
     target: Option<String>,
 }
 
-fn write_entry(work: &Work, tmdb_id: i64, content_dir: &Path, mode: DateMode, existing_paths: &mut HashMap<(String, i64), PathBuf>) -> Result<()> {
-    let path = entry_path(content_dir, &work.media_type, tmdb_id, existing_paths);
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent)?;
+/// An entry held in memory for `--to-file`, rendered to TOML only when the bundle
+/// is written.
+struct MemEntry {
+    media_type: String,
+    note: Option<String>,
+    tags: Vec<String>,
+    releases: Vec<ReleaseOut>,
+}
+
+/// Where resolved entries go. A normal import writes straight into the catalog's
+/// content dir (incremental: only touched files change). `--to-file` keeps them
+/// in memory and packs a bundle at the end — no content dir, no temp files. The
+/// loop and the doubtful review drive it the same way regardless; only this I/O
+/// differs, so the merge/render/review logic is written once.
+enum Sink {
+    Dir { content_dir: PathBuf, ids: BTreeSet<(String, i64)>, paths: HashMap<(String, i64), PathBuf> },
+    Mem(BTreeMap<(String, i64), MemEntry>),
+}
+
+impl Sink {
+    /// Whether an entry for this (type, id) already exists (in the catalog for a
+    /// dir sink, or already produced this run).
+    fn contains(&self, key: &(String, i64)) -> bool {
+        match self {
+            Sink::Dir { ids, .. } => ids.contains(key),
+            Sink::Mem(m) => m.contains_key(key),
+        }
     }
-    fs::write(&path, render_entry(&work.media_type, tmdb_id, &build_releases(work, mode), &None, &[]))?;
-    existing_paths.insert((work.media_type.clone(), tmdb_id), path);
-    Ok(())
+
+    /// Reserve an id without writing it — used in --dry-run so a later work with
+    /// the same id previews as a merge.
+    fn reserve(&mut self, key: (String, i64)) {
+        if let Sink::Dir { ids, .. } = self {
+            ids.insert(key);
+        }
+    }
+
+    /// Create a new entry from a resolved work.
+    fn write(&mut self, media_type: &str, tmdb_id: i64, work: &Work, mode: DateMode) -> Result<()> {
+        match self {
+            Sink::Dir { content_dir, ids, paths } => {
+                let path = entry_path(content_dir, media_type, tmdb_id, paths);
+                if let Some(parent) = path.parent() {
+                    fs::create_dir_all(parent)?;
+                }
+                fs::write(&path, render_entry(media_type, tmdb_id, &build_releases(work, mode), &None, &[]))?;
+                paths.insert((media_type.to_string(), tmdb_id), path);
+                ids.insert((media_type.to_string(), tmdb_id));
+            }
+            Sink::Mem(m) => {
+                m.insert(
+                    (media_type.to_string(), tmdb_id),
+                    MemEntry {
+                        media_type: media_type.to_string(),
+                        note: None,
+                        tags: Vec::new(),
+                        releases: build_releases(work, mode),
+                    },
+                );
+            }
+        }
+        Ok(())
+    }
+
+    /// Fold a work's links into the existing entry; returns the links added.
+    fn merge(&mut self, media_type: &str, tmdb_id: i64, work: &Work, mode: DateMode) -> Result<usize> {
+        match self {
+            Sink::Dir { content_dir, paths, .. } => {
+                let path = entry_path(content_dir, media_type, tmdb_id, paths);
+                let data: ExEntry = toml::from_str(&fs::read_to_string(&path)?)?;
+                let mtype = data.media_type.unwrap_or_else(|| media_type.to_string());
+                let note = data.note;
+                let tags = data.tags;
+                let mut releases: Vec<ReleaseOut> = data.releases.into_iter().map(flatten_release).collect();
+                let added = merge_into(&mut releases, build_releases(work, mode));
+                if added > 0 {
+                    fs::write(&path, render_entry(&mtype, tmdb_id, &releases, &note, &tags))?;
+                }
+                Ok(added)
+            }
+            Sink::Mem(m) => {
+                let e = m
+                    .get_mut(&(media_type.to_string(), tmdb_id))
+                    .expect("merge on a missing in-memory entry");
+                Ok(merge_into(&mut e.releases, build_releases(work, mode)))
+            }
+        }
+    }
+
+    /// Consume a memory sink and write its entries as a minified bundle file.
+    fn into_bundle(self, out: &str) -> Result<usize> {
+        let Sink::Mem(map) = self else {
+            unreachable!("into_bundle on a non-memory sink");
+        };
+        let mut entries: Vec<BundleEntry> = map
+            .into_iter()
+            .map(|((mtype, id), e)| BundleEntry {
+                path: format!("{}/{mtype}-{id}.toml", subdir(&mtype)),
+                content: render_entry(&e.media_type, id, &e.releases, &e.note, &e.tags),
+            })
+            .collect();
+        entries.sort_by(|a, b| a.path.cmp(&b.path));
+        let doc = BundleFile { kind: BUNDLE_FILE_KIND.into(), version: BUNDLE_FORMAT_VERSION, entries };
+        fs::write(out, serde_json::to_string(&doc)?)?;
+        Ok(doc.entries.len())
+    }
 }
 
 /// Fold the incoming releases into `releases`, adding only links whose hash is
@@ -1767,21 +1835,6 @@ fn merge_into(releases: &mut Vec<ReleaseOut>, incoming: Vec<ReleaseOut>) -> usiz
     added
 }
 
-fn merge_entry(work: &Work, tmdb_id: i64, content_dir: &Path, mode: DateMode, existing_paths: &mut HashMap<(String, i64), PathBuf>) -> Result<usize> {
-    let path = entry_path(content_dir, &work.media_type, tmdb_id, existing_paths);
-    let data: ExEntry = toml::from_str(&fs::read_to_string(&path)?)?;
-    let mtype = data.media_type.unwrap_or_else(|| work.media_type.clone());
-    let note = data.note;
-    let tags = data.tags;
-    let mut releases: Vec<ReleaseOut> = data.releases.into_iter().map(flatten_release).collect();
-    let added = merge_into(&mut releases, build_releases(work, mode));
-    if added == 0 {
-        return Ok(0);
-    }
-    fs::write(&path, render_entry(&mtype, tmdb_id, &releases, &note, &tags))?;
-    Ok(added)
-}
-
 const DEFAULT_SIM: f64 = 0.85;
 const DEFAULT_GAP: f64 = 0.10;
 
@@ -1818,8 +1871,8 @@ impl Drop for TempDir {
     }
 }
 
-/// Persistent search-cache directory for `import --to-file`, which writes fichas
-/// to a throwaway temp dir and so has no catalog cache of its own. Reuse an
+/// Persistent search-cache directory for `import --to-file`, which builds the
+/// bundle in memory and so has no catalog cache of its own. Reuse an
 /// existing catalog's cache when one is given (via --content or CATALOG_DIR) so
 /// prior lookups are shared; otherwise fall back to a per-user cache. Either way
 /// it survives across runs, so an interrupted export resumes without re-querying
@@ -1848,23 +1901,25 @@ pub fn run(args: ImportArgs) -> Result<()> {
         bail!(red("error: --to-file needs a real import; not compatible with --plan/--dry-run."));
     }
 
-    // --to-file resolves into a throwaway temp dir that is then packed into the
-    // bundle; a normal import writes straight into the catalog's content dir. The
-    // temp is an RAII TempDir so it is removed on return or on any `?` error.
-    let tmp_root = args
-        .to_file
-        .as_ref()
-        .map(|_| TempDir(std::env::temp_dir().join(format!("tordo-import-{}-{}", std::process::id(), now_secs()))));
-    let content_dir = match &tmp_root {
-        Some(guard) => guard.0.join("content"),
-        None => resolve_content(&args.content)?,
+    // --to-file keeps entries in memory and packs a bundle at the end (no content
+    // dir, no temp files); a normal import writes straight into the catalog's
+    // content dir. Resolve the content dir only for the latter.
+    let content_dir: Option<PathBuf> = if args.to_file.is_some() {
+        None
+    } else {
+        Some(resolve_content(&args.content)?)
     };
-    let mut existing = load_existing(&content_dir);
-    println!(
-        "Existing entries: {} ({} links already covered)",
-        bold(&existing.ids.len().to_string()),
-        existing.linked.len()
-    );
+    let existing = match &content_dir {
+        Some(d) => load_existing(d),
+        None => Existing { linked: BTreeSet::new(), ids: BTreeSet::new(), paths: HashMap::new() },
+    };
+    if content_dir.is_some() {
+        println!(
+            "Existing entries: {} ({} links already covered)",
+            bold(&existing.ids.len().to_string()),
+            existing.linked.len()
+        );
+    }
 
     // Obtain the works either from a links file (the offline hand-off) or by
     // parsing a Rucio database.
@@ -1996,28 +2051,32 @@ pub fn run(args: ImportArgs) -> Result<()> {
 
     // The search cache (title -> TMDB id, no TTL) must be PERSISTENT so an
     // interrupted run resumes without re-querying TMDB. A normal import uses the
-    // catalog's own cache/search next to content/. --to-file writes fichas to a
-    // throwaway temp dir, so point its cache at a stable place instead: the
-    // catalog's cache when one is given, else a per-user cache.
-    let cache_dir = if tmp_root.is_some() {
-        to_file_cache_dir(&args.content)
-    } else {
-        content_dir.parent().unwrap_or(Path::new(".")).join("cache").join("search")
+    // catalog's own cache/search next to content/. --to-file has no catalog, so
+    // point its cache at a stable place: the catalog's cache when one is given
+    // (via --content/CATALOG_DIR), else a per-user cache.
+    let cache_dir = match &content_dir {
+        Some(d) => d.parent().unwrap_or(Path::new(".")).join("cache").join("search"),
+        None => to_file_cache_dir(&args.content),
     };
     let mut tmdb = Tmdb::new(args.tmdb_key.clone(), args.tmdb_token.clone(), args.lang.clone(), cache_dir);
     if args.dry_run {
         println!("{}: querying TMDB, writing no .toml files.\n", yellow(&bold("DRY RUN")));
-    } else {
-        fs::create_dir_all(&content_dir)?;
     }
+
+    // Entries go to the catalog's content dir (a normal import) or to memory to be
+    // packed into a bundle (--to-file). Both paths drive the same loop below.
+    let mut sink = match &content_dir {
+        Some(d) => Sink::Dir { content_dir: d.clone(), ids: existing.ids, paths: existing.paths },
+        None => Sink::Mem(BTreeMap::new()),
+    };
 
     let mut records: Vec<Record> = Vec::new();
     let total = works.len();
     for (idx, w) in works.iter().enumerate() {
         let res = resolve(&w.media_type, w, &mut tmdb);
         let mut status = "doubtful".to_string();
-        if let (Some(_id), true) = (res.id, res.confident) {
-            status = if existing.ids.contains(&(w.media_type.clone(), res.id.unwrap())) { "merge" } else { "write" }.to_string();
+        if let (Some(id), true) = (res.id, res.confident) {
+            status = if sink.contains(&(w.media_type.clone(), id)) { "merge" } else { "write" }.to_string();
         }
         let target = res.id.map(|id| format!("{}/{}-{id}.toml", subdir(&w.media_type), w.media_type));
         let mut rec = Record {
@@ -2040,11 +2099,11 @@ pub fn run(args: ImportArgs) -> Result<()> {
         let prog = dim(&format!("[{}/{total}]", idx + 1));
         if status == "write" {
             let id = res.id.unwrap();
-            existing.ids.insert((w.media_type.clone(), id));
             if args.dry_run {
+                sink.reserve((w.media_type.clone(), id));
                 println!("{prog} {} {}  {:?}", dim("~ would write"), green(&format!("{}-{id}", w.media_type)), w.title);
             } else {
-                write_entry(w, id, &content_dir, args.date, &mut existing.paths)?;
+                sink.write(&w.media_type, id, w, args.date)?;
                 println!("{prog} {} {}-{id}  {:?} ({} files)", green("+"), w.media_type, w.title, w.files.len());
             }
         } else if status == "merge" {
@@ -2053,7 +2112,7 @@ pub fn run(args: ImportArgs) -> Result<()> {
                 rec.added_links = Some(w.files.len());
                 println!("{prog} {} {}  +{} links  {:?}", dim("~ would merge"), cyan(&format!("{}-{id}", w.media_type)), w.files.len(), w.title);
             } else {
-                let n = merge_entry(w, id, &content_dir, args.date, &mut existing.paths)?;
+                let n = sink.merge(&w.media_type, id, w, args.date)?;
                 rec.added_links = Some(n);
                 println!("{prog} {} merge  {}-{id}  {}  {:?}", cyan("^"), w.media_type, cyan(&format!("+{n} links")), w.title);
             }
@@ -2073,7 +2132,7 @@ pub fn run(args: ImportArgs) -> Result<()> {
     );
 
     if !args.auto && !args.dry_run && io::stdin().is_terminal() {
-        review(&mut records, &works, &content_dir, args.date, &mut existing)?;
+        review(&mut records, &works, args.date, &mut sink)?;
     }
 
     if let Some(path) = &args.report {
@@ -2084,8 +2143,7 @@ pub fn run(args: ImportArgs) -> Result<()> {
     }
     if !args.dry_run {
         if let Some(out) = &args.to_file {
-            // tmp_root (the TempDir guard) is removed when run() returns.
-            let n = write_bundle(&content_dir, out)?;
+            let n = sink.into_bundle(out)?;
             println!("\n{}{} ({n} entries)", bold("Bundle: "), absolute(out).display());
             println!("{}", dim("Hand it to a maintainer to fold in with `tordo merge`."));
         } else {
@@ -2114,7 +2172,7 @@ fn human_size(bytes: i64) -> String {
     if u == 0 { format!("{bytes} B") } else { format!("{v:.1} {}", UNITS[u]) }
 }
 
-fn review(records: &mut [Record], works: &[Work], content_dir: &Path, mode: DateMode, existing: &mut Existing) -> Result<()> {
+fn review(records: &mut [Record], works: &[Work], mode: DateMode, sink: &mut Sink) -> Result<()> {
     let doubtful: Vec<usize> = records.iter().enumerate().filter(|(_, r)| r.status == "doubtful").map(|(i, _)| i).collect();
     if doubtful.is_empty() {
         return Ok(());
@@ -2236,14 +2294,13 @@ fn review(records: &mut [Record], works: &[Work], content_dir: &Path, mode: Date
         records[ri].media_type = ctype.clone();
         records[ri].tmdb_id = Some(cid);
         records[ri].target = Some(format!("{}/{}-{cid}.toml", subdir(&ctype), ctype));
-        if existing.ids.contains(&(ctype.clone(), cid)) {
+        if sink.contains(&(ctype.clone(), cid)) {
             records[ri].status = "merge".into();
-            let n = merge_entry(&cw, cid, content_dir, mode, &mut existing.paths)?;
+            let n = sink.merge(&ctype, cid, &cw, mode)?;
             records[ri].added_links = Some(n);
             println!("  {} merge  {ctype}-{cid}  {}  {:?}", cyan("^"), cyan(&format!("+{n} links")), cw.title);
         } else {
-            write_entry(&cw, cid, content_dir, mode, &mut existing.paths)?;
-            existing.ids.insert((ctype.clone(), cid));
+            sink.write(&ctype, cid, &cw, mode)?;
             records[ri].status = "write".into();
             println!("  {} {ctype}-{cid}  {:?} ({} files)", green("+"), cw.title, cw.files.len());
         }
