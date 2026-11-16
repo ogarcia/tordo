@@ -321,6 +321,7 @@ fn tmdb_fetch(
     mode: RefreshMode,
     ttl_secs: u64,
     cache_dir: &Path,
+    progress: (usize, usize),
 ) -> Result<serde_json::Value> {
     // Payloads are split by media type (cache/movies/, cache/tv/) so a large
     // catalog does not pile thousands of files into one directory.
@@ -352,7 +353,8 @@ fn tmdb_fetch(
         }
     }
 
-    eprintln!("· fetching {media_type}-{id} from TMDB");
+    let (idx, total) = progress;
+    eprintln!("· [{idx}/{total}] fetching {media_type}-{id} from TMDB");
     match tmdb_get(media_type, id, lang) {
         Ok(mut v) => {
             v["_fetched_at"] = serde_json::json!(now_secs());
@@ -1087,13 +1089,15 @@ fn generate(refresh_all: bool, refresh_live: bool) -> Result<()> {
         CONTENT_DIR
     };
     let mut entries: Vec<(EntryView, Card)> = Vec::new();
-    for path in toml_paths {
+    let total = toml_paths.len();
+    for (idx, path) in toml_paths.into_iter().enumerate() {
         let raw: RawEntry = toml::from_str(&fs::read_to_string(&path)?)
             .with_context(|| format!("parsing {}", path.display()))?;
         let slug = path.file_stem().unwrap().to_string_lossy().into_owned();
 
-        let payload = tmdb_fetch(&raw.media_type, raw.id, &tmdb_lang, mode, ttl_secs, &cache_dir)
-            .with_context(|| format!("TMDB data for {slug}"))?;
+        let payload =
+            tmdb_fetch(&raw.media_type, raw.id, &tmdb_lang, mode, ttl_secs, &cache_dir, (idx + 1, total))
+                .with_context(|| format!("TMDB data for {slug}"))?;
         let (title, year, overview, poster) = extract(&raw.media_type, &payload);
         let det = details(&raw.media_type, &payload, &title, &locale);
 
